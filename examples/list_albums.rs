@@ -1,10 +1,21 @@
 use cyberdrop_client::CyberdropClient;
 
+fn take_arg_or_env(args: &mut impl Iterator<Item = String>, env_key: &str, arg_name: &str) -> String {
+    args.next()
+        .or_else(|| std::env::var(env_key).ok())
+        .unwrap_or_else(|| panic!("provide {} as arg or set {}", arg_name, env_key))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let token = std::env::var("CYBERDROP_TOKEN").expect("CYBERDROP_TOKEN env var not set");
+    let mut args = std::env::args().skip(1);
+    let username = take_arg_or_env(&mut args, "CYBERDROP_USERNAME", "username");
+    let password = take_arg_or_env(&mut args, "CYBERDROP_PASSWORD", "password");
 
-    let client = CyberdropClient::builder().auth_token(token).build()?;
+    let client = CyberdropClient::builder().build()?;
+    let token = client.login(username, password).await?;
+    let client = client.with_auth_token(token.into_string());
+
     let albums = client.list_albums().await?;
 
     println!("Found {} albums:", albums.albums.len());

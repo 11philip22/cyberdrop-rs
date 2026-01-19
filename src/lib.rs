@@ -152,7 +152,7 @@ impl CyberdropClientBuilder {
             user_agent: None,
             timeout: DEFAULT_TIMEOUT,
             auth_token: None,
-            builder: Client::builder().cookie_store(true),
+            builder: Client::builder(),
         }
     }
 
@@ -198,7 +198,8 @@ impl CyberdropClientBuilder {
 }
 
 fn default_user_agent() -> String {
-    format!("cyberdrop-rs/{}", env!("CARGO_PKG_VERSION"))
+    // Match a browser UA; the service appears to expect browser-like clients.
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) Gecko/20100101 Firefox/147.0".into()
 }
 
 #[cfg(test)]

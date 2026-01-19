@@ -1,4 +1,8 @@
-use reqwest::{multipart::Form, Client, Method, RequestBuilder, StatusCode, Url};
+use reqwest::{
+    header::{HeaderName, ACCEPT, ACCEPT_LANGUAGE},
+    multipart::Form,
+    Client, Method, RequestBuilder, StatusCode, Url,
+};
 use serde::de::DeserializeOwned;
 
 use crate::{AuthToken, CyberdropError};
@@ -101,7 +105,11 @@ impl Transport {
         requires_auth: bool,
     ) -> Result<RequestBuilder, CyberdropError> {
         let url = self.join_path(path)?;
-        let builder = self.client.request(method, url);
+        let builder = self
+            .client
+            .request(method, url)
+            .header(ACCEPT, "application/json, text/plain, */*")
+            .header(ACCEPT_LANGUAGE, "nl,en-US;q=0.9,en;q=0.8");
 
         if requires_auth {
             self.apply_auth(builder)
@@ -143,17 +151,15 @@ impl Transport {
     }
 
     fn attach_token(builder: RequestBuilder, token: &AuthToken) -> RequestBuilder {
+        let builder = builder.header(HeaderName::from_static("token"), token.as_str());
+
         builder
-            .bearer_auth(token.as_str())
-            .header("Token", token.as_str())
-            .header("token", token.as_str())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reqwest::header::AUTHORIZATION;
 
     fn transport_with_token(token: &str) -> Transport {
         Transport::new(
@@ -192,8 +198,6 @@ mod tests {
             .unwrap();
         let request = builder.build().unwrap();
         let headers = request.headers();
-        assert_eq!(headers.get(AUTHORIZATION).unwrap(), "Bearer secret");
-        assert_eq!(headers.get("Token").unwrap(), "secret");
         assert_eq!(headers.get("token").unwrap(), "secret");
     }
 
@@ -205,8 +209,6 @@ mod tests {
             .unwrap();
         let request = builder.build().unwrap();
         let headers = request.headers();
-        assert!(!headers.contains_key(AUTHORIZATION));
-        assert!(!headers.contains_key("Token"));
         assert!(!headers.contains_key("token"));
     }
 
