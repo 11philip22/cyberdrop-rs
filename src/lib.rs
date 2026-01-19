@@ -1,6 +1,8 @@
 use std::{path::Path, time::Duration};
 
 use reqwest::{multipart::Form, Client, ClientBuilder, Url};
+use serde::Serialize;
+use uuid::Uuid;
 
 mod error;
 mod models;
@@ -14,6 +16,36 @@ use models::{
 };
 use transport::Transport;
 
+#[derive(Debug, Clone)]
+pub(crate) struct ChunkFields {
+    pub(crate) uuid: String,
+    pub(crate) chunk_index: u64,
+    pub(crate) total_size: u64,
+    pub(crate) chunk_size: u64,
+    pub(crate) total_chunks: u64,
+    pub(crate) byte_offset: u64,
+    pub(crate) file_name: String,
+    pub(crate) mime_type: String,
+    pub(crate) album_id: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct FinishFile {
+    pub(crate) uuid: String,
+    pub(crate) original: String,
+    #[serde(rename = "type")]
+    pub(crate) r#type: String,
+    pub(crate) albumid: Option<u64>,
+    pub(crate) filelength: Option<u64>,
+    pub(crate) age: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct FinishChunksPayload {
+    pub(crate) files: Vec<FinishFile>,
+}
+
+const CHUNK_SIZE: u64 = 95_000_000;
 const DEFAULT_BASE_URL: &str = "https://cyberdrop.cr/";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -109,7 +141,7 @@ impl CyberdropClient {
         u64::try_from(response)
     }
 
-    /// Upload a single file (up to service limits).
+    /// Upload a single file (chunked, up to service limits).
     pub async fn upload_file(
         &self,
         file_path: impl AsRef<Path>,
@@ -119,15 +151,85 @@ impl CyberdropClient {
         let file_name = file_path
             .file_name()
             .and_then(|n| n.to_str())
-            .ok_or(CyberdropError::InvalidFileName)?;
-        let bytes = std::fs::read(file_path)?;
+            .ok_or(CyberdropError::InvalidFileName)?
+            .to_string();
 
-        let part = reqwest::multipart::Part::bytes(bytes).file_name(file_name.to_string());
-        let form = Form::new().part("files[]", part);
+        let mime = mime_guess::from_path(file_path)
+            .first_raw()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
+        let data = std::fs::read(file_path)?;
+        let total_size = data.len() as u64;
+
+        // For small files, use the simple single-upload endpoint.
+        if total_size <= CHUNK_SIZE {
+            let part = reqwest::multipart::Part::bytes(data).file_name(file_name.clone());
+            let part = match part.mime_str(&mime) {
+                Ok(p) => p,
+                Err(_) => reqwest::multipart::Part::bytes(Vec::new()).file_name(file_name.clone()),
+            };
+            let form = Form::new().part("files[]", part);
+            let response: UploadResponse = self
+                .transport
+                .post_single_upload("api/upload", form, album_id)
+                .await?;
+            return UploadedFile::try_from(response);
+        }
+
+        let chunk_size = CHUNK_SIZE.min(total_size.max(1));
+        let total_chunks = ((total_size + chunk_size - 1) / chunk_size).max(1);
+        let uuid = Uuid::new_v4().to_string();
+
+        for (index, chunk) in data.chunks(chunk_size as usize).enumerate() {
+            let chunk_index = index as u64;
+            let byte_offset = chunk_index * chunk_size;
+
+            let response: serde_json::Value = self
+                .transport
+                .post_chunk(
+                    "api/upload",
+                    chunk.to_vec(),
+                    ChunkFields {
+                        uuid: uuid.clone(),
+                        chunk_index,
+                        total_size,
+                        chunk_size,
+                        total_chunks,
+                        byte_offset,
+                        file_name: file_name.clone(),
+                        mime_type: mime.clone(),
+                        album_id,
+                    },
+                )
+                .await?;
+
+            if !response
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
+                return Err(CyberdropError::Api(format!(
+                    "chunk {} failed",
+                    chunk_index
+                )));
+            }
+        }
+
+        let payload = FinishChunksPayload {
+            files: vec![FinishFile {
+                uuid,
+                original: file_name,
+                r#type: mime,
+                albumid: album_id,
+                filelength: None,
+                age: None,
+            }],
+        };
 
         let response: UploadResponse = self
             .transport
-            .post_multipart("api/upload", form, album_id)
+            .post_json_with_upload_headers("api/upload/finishchunks", &payload)
             .await?;
 
         UploadedFile::try_from(response)

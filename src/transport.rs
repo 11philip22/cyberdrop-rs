@@ -1,11 +1,11 @@
 use reqwest::{
     header::{HeaderName, ACCEPT, ACCEPT_LANGUAGE},
-    multipart::Form,
+    multipart::{Form, Part},
     Client, Method, RequestBuilder, StatusCode, Url,
 };
 use serde::de::DeserializeOwned;
 
-use crate::{AuthToken, CyberdropError};
+use crate::{AuthToken, ChunkFields, CyberdropError};
 
 #[derive(Debug, Clone)]
 pub(crate) struct Transport {
@@ -72,7 +72,69 @@ impl Transport {
         self.send_json(builder).await
     }
 
-    pub(crate) async fn post_multipart<T>(
+    pub(crate) async fn post_chunk<T>(
+        &self,
+        path: &str,
+        data: Vec<u8>,
+        fields: ChunkFields,
+    ) -> Result<T, CyberdropError>
+    where
+        T: DeserializeOwned,
+    {
+        let mut builder = self.build_request(Method::POST, path, true)?;
+        if let Some(id) = fields.album_id {
+            builder = builder.header("albumid", id);
+        }
+        builder = builder
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("striptags", "undefined")
+            .header("Origin", "https://cyberdrop.cr")
+            .header("Referer", "https://cyberdrop.cr/")
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache");
+
+        let part = Part::bytes(data).file_name(fields.file_name.clone());
+        let part = match part.mime_str(&fields.mime_type) {
+            Ok(p) => p,
+            Err(_) => Part::bytes(Vec::new()).file_name(fields.file_name.clone()),
+        };
+
+        let form = Form::new()
+            .text("dzuuid", fields.uuid.clone())
+            .text("dzchunkindex", fields.chunk_index.to_string())
+            .text("dztotalfilesize", fields.total_size.to_string())
+            .text("dzchunksize", fields.chunk_size.to_string())
+            .text("dztotalchunkcount", fields.total_chunks.to_string())
+            .text("dzchunkbyteoffset", fields.byte_offset.to_string())
+            .part("files[]", part);
+
+        let builder = builder.multipart(form);
+        self.send_json(builder).await
+    }
+
+    pub(crate) async fn post_json_with_upload_headers<B, T>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, CyberdropError>
+    where
+        B: serde::Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        let builder = self
+            .build_request(Method::POST, path, true)?
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("striptags", "undefined")
+            .header("Origin", "https://cyberdrop.cr")
+            .header("Referer", "https://cyberdrop.cr/")
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache")
+            .json(body);
+
+        self.send_json(builder).await
+    }
+
+    pub(crate) async fn post_single_upload<T>(
         &self,
         path: &str,
         form: Form,
