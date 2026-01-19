@@ -133,9 +133,6 @@ impl CyberdropClient {
         UploadedFile::try_from(response)
     }
 
-    fn join_path(&self, path: &str) -> Result<Url, CyberdropError> {
-        self.transport.join_path(path)
-    }
 }
 
 /// Builder for [`CyberdropClient`].
@@ -155,7 +152,7 @@ impl CyberdropClientBuilder {
             user_agent: None,
             timeout: DEFAULT_TIMEOUT,
             auth_token: None,
-            builder: Client::builder(),
+            builder: Client::builder().cookie_store(true),
         }
     }
 
@@ -202,4 +199,33 @@ impl CyberdropClientBuilder {
 
 fn default_user_agent() -> String {
     format!("cyberdrop-rs/{}", env!("CARGO_PKG_VERSION"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builder_carries_auth_token_into_client() {
+        let client = CyberdropClient::builder()
+            .auth_token("abc123")
+            .build()
+            .unwrap();
+
+        assert_eq!(client.auth_token(), Some("abc123"));
+    }
+
+    #[tokio::test]
+    async fn list_albums_requires_auth_token() {
+        let client = CyberdropClient::builder().build().unwrap();
+        let err = client.list_albums().await.unwrap_err();
+        assert!(matches!(err, CyberdropError::MissingAuthToken));
+    }
+
+    #[tokio::test]
+    async fn create_album_requires_auth_token() {
+        let client = CyberdropClient::builder().build().unwrap();
+        let err = client.create_album("name", None::<String>).await.unwrap_err();
+        assert!(matches!(err, CyberdropError::MissingAuthToken));
+    }
 }

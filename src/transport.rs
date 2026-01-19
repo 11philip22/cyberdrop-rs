@@ -149,3 +149,78 @@ impl Transport {
             .header("token", token.as_str())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::header::AUTHORIZATION;
+
+    fn transport_with_token(token: &str) -> Transport {
+        Transport::new(
+            Client::new(),
+            Url::parse("https://example.test/root/").unwrap(),
+            Some(AuthToken::new(token)),
+        )
+    }
+
+    #[test]
+    fn join_path_appends_relative_segment() {
+        let transport = transport_with_token("abc");
+        let url = transport.join_path("api/v1").unwrap();
+        assert_eq!(url.as_str(), "https://example.test/root/api/v1");
+    }
+
+    #[test]
+    fn build_request_requires_auth_token() {
+        let transport = Transport::new(
+            Client::new(),
+            Url::parse("https://example.test/").unwrap(),
+            None,
+        );
+
+        let err = transport
+            .build_request(Method::GET, "api/secure", true)
+            .unwrap_err();
+        matches!(err, CyberdropError::MissingAuthToken);
+    }
+
+    #[test]
+    fn build_request_attaches_auth_headers() {
+        let transport = transport_with_token("secret");
+        let builder = transport
+            .build_request(Method::GET, "api/secure", true)
+            .unwrap();
+        let request = builder.build().unwrap();
+        let headers = request.headers();
+        assert_eq!(headers.get(AUTHORIZATION).unwrap(), "Bearer secret");
+        assert_eq!(headers.get("Token").unwrap(), "secret");
+        assert_eq!(headers.get("token").unwrap(), "secret");
+    }
+
+    #[test]
+    fn build_request_does_not_attach_headers_when_not_required() {
+        let transport = transport_with_token("secret");
+        let builder = transport
+            .build_request(Method::GET, "api/public", false)
+            .unwrap();
+        let request = builder.build().unwrap();
+        let headers = request.headers();
+        assert!(!headers.contains_key(AUTHORIZATION));
+        assert!(!headers.contains_key("Token"));
+        assert!(!headers.contains_key("token"));
+    }
+
+    #[test]
+    fn map_status_classifies_errors() {
+        assert!(Transport::map_status(StatusCode::OK).is_ok());
+
+        let auth_err = Transport::map_status(StatusCode::UNAUTHORIZED).unwrap_err();
+        matches!(auth_err, CyberdropError::AuthenticationFailed(StatusCode::UNAUTHORIZED));
+
+        let forbidden = Transport::map_status(StatusCode::FORBIDDEN).unwrap_err();
+        matches!(forbidden, CyberdropError::AuthenticationFailed(StatusCode::FORBIDDEN));
+
+        let server_err = Transport::map_status(StatusCode::INTERNAL_SERVER_ERROR).unwrap_err();
+        matches!(server_err, CyberdropError::RequestFailed(StatusCode::INTERNAL_SERVER_ERROR));
+    }
+}
