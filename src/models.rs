@@ -1,6 +1,8 @@
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
+use crate::CyberdropError;
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
 pub struct AuthToken {
@@ -8,6 +10,10 @@ pub struct AuthToken {
 }
 
 impl AuthToken {
+    pub fn new(token: impl Into<String>) -> Self {
+        Self { token: token.into() }
+    }
+
     pub fn as_str(&self) -> &str {
         &self.token
     }
@@ -111,4 +117,107 @@ pub(crate) struct AlbumsResponse {
     pub(crate) success: Option<bool>,
     pub(crate) albums: Option<Vec<Album>>,
     pub(crate) home_domain: Option<String>,
+}
+
+impl TryFrom<LoginResponse> for AuthToken {
+    type Error = CyberdropError;
+
+    fn try_from(response: LoginResponse) -> Result<Self, Self::Error> {
+        response.token.ok_or(CyberdropError::MissingToken)
+    }
+}
+
+impl TryFrom<VerifyTokenResponse> for TokenVerification {
+    type Error = CyberdropError;
+
+    fn try_from(body: VerifyTokenResponse) -> Result<Self, Self::Error> {
+        let success = body.success.ok_or(CyberdropError::MissingField(
+            "verification response missing success",
+        ))?;
+        let username = body.username.ok_or(CyberdropError::MissingField(
+            "verification response missing username",
+        ))?;
+        let permissions = body.permissions.ok_or(CyberdropError::MissingField(
+            "verification response missing permissions",
+        ))?;
+
+        Ok(TokenVerification {
+            success,
+            username,
+            permissions,
+        })
+    }
+}
+
+impl TryFrom<AlbumsResponse> for AlbumsList {
+    type Error = CyberdropError;
+
+    fn try_from(body: AlbumsResponse) -> Result<Self, Self::Error> {
+        if !body.success.unwrap_or(false) {
+            return Err(CyberdropError::Api("failed to fetch albums".into()));
+        }
+
+        let albums = body
+            .albums
+            .ok_or(CyberdropError::MissingField("albums response missing albums"))?;
+
+        let home_domain = match body.home_domain {
+            Some(url) => Some(Url::parse(&url)?),
+            None => None,
+        };
+
+        Ok(AlbumsList {
+            success: true,
+            albums,
+            home_domain,
+        })
+    }
+}
+
+impl TryFrom<CreateAlbumResponse> for u64 {
+    type Error = CyberdropError;
+
+    fn try_from(body: CreateAlbumResponse) -> Result<Self, Self::Error> {
+        if body.success.unwrap_or(false) {
+            return body.id.ok_or(CyberdropError::MissingField(
+                "create album response missing id",
+            ));
+        }
+
+        let msg = body
+            .description
+            .or(body.message)
+            .unwrap_or_else(|| "create album failed".to_string());
+
+        if msg.to_lowercase().contains("already an album") {
+            Err(CyberdropError::AlbumAlreadyExists(msg))
+        } else {
+            Err(CyberdropError::Api(msg))
+        }
+    }
+}
+
+impl TryFrom<UploadResponse> for UploadedFile {
+    type Error = CyberdropError;
+
+    fn try_from(body: UploadResponse) -> Result<Self, Self::Error> {
+        if body.success.unwrap_or(false) {
+            let first = body
+                .files
+                .and_then(|mut files| files.pop())
+                .ok_or(CyberdropError::MissingField(
+                    "upload response missing files",
+                ))?;
+            let url = Url::parse(&first.url)?;
+            Ok(UploadedFile {
+                name: first.name,
+                url: url.to_string(),
+            })
+        } else {
+            let msg = body
+                .description
+                .unwrap_or_else(|| "upload failed".to_string());
+            Err(CyberdropError::Api(msg))
+        }
+    }
 }

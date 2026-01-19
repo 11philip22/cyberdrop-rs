@@ -7,6 +7,8 @@ pub enum CyberdropError {
     InvalidUrl(#[from] url::ParseError),
     #[error("authentication failed with status {0}")]
     AuthenticationFailed(StatusCode),
+    #[error("request failed with status {0}")]
+    RequestFailed(StatusCode),
     #[error("auth token required for this request")]
     MissingAuthToken,
     #[error("login response missing token")]

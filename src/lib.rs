@@ -1,12 +1,15 @@
 use std::{path::Path, time::Duration};
 
+use reqwest::{
+    multipart::Form, Client, ClientBuilder, Method, RequestBuilder, StatusCode, Url,
+};
+use serde::de::DeserializeOwned;
+
 mod error;
 mod models;
 
 pub use error::CyberdropError;
 pub use models::{Album, AlbumsList, AuthToken, Permissions, TokenVerification, UploadedFile};
-use reqwest::{Client, ClientBuilder, RequestBuilder, Url, multipart::Form};
-
 use models::{
     AlbumsResponse, CreateAlbumRequest, CreateAlbumResponse, LoginRequest, LoginResponse,
     UploadResponse, VerifyTokenRequest, VerifyTokenResponse,
@@ -15,12 +18,12 @@ use models::{
 const DEFAULT_BASE_URL: &str = "https://cyberdrop.cr/";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Thin async HTTP client for Cyberdrop endpoints.
+/// Async HTTP client for Cyberdrop endpoints.
 #[derive(Debug, Clone)]
 pub struct CyberdropClient {
     client: Client,
     base_url: Url,
-    auth_token: Option<String>,
+    auth_token: Option<AuthToken>,
 }
 
 impl CyberdropClient {
@@ -41,22 +44,22 @@ impl CyberdropClient {
 
     /// Current auth token if configured.
     pub fn auth_token(&self) -> Option<&str> {
-        self.auth_token.as_deref()
+        self.auth_token.as_ref().map(AuthToken::as_str)
     }
 
     /// Return a clone of this client that applies bearer auth to requests.
     pub fn with_auth_token(mut self, token: impl Into<String>) -> Self {
-        self.auth_token = Some(token.into());
+        self.auth_token = Some(AuthToken::new(token));
         self
     }
 
     /// Execute a GET request against a relative path on the Cyberdrop API.
     pub async fn get(&self, path: impl AsRef<str>) -> Result<reqwest::Response, CyberdropError> {
-        let url = self.join_path(path.as_ref())?;
-        self.apply_auth(self.client.get(url))
-            .send()
-            .await
-            .map_err(CyberdropError::from)
+        let builder = self
+            .client
+            .get(self.join_path(path.as_ref())?);
+        let builder = self.apply_auth_if_present(builder);
+        builder.send().await.map_err(CyberdropError::from)
     }
 
     /// Authenticate to retrieve a bearer token.
@@ -65,31 +68,16 @@ impl CyberdropClient {
         username: impl Into<String>,
         password: impl Into<String>,
     ) -> Result<AuthToken, CyberdropError> {
-        let url = self.join_path("api/login")?;
         let payload = LoginRequest {
             username: username.into(),
             password: password.into(),
         };
 
-        let response = self
-            .client
-            .post(url)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(CyberdropError::from)?;
+        let response: LoginResponse = self
+            .post_json("api/login", &payload, false)
+            .await?;
 
-        if !response.status().is_success() {
-            return Err(CyberdropError::AuthenticationFailed(response.status()));
-        }
-
-        let body: LoginResponse = response.json().await?;
-        let token = body
-            .token
-            .ok_or(CyberdropError::MissingToken)?
-            .into_string();
-
-        Ok(AuthToken { token })
+        AuthToken::try_from(response)
     }
 
     /// Verify a bearer token and fetch associated permissions.
@@ -97,46 +85,21 @@ impl CyberdropClient {
         &self,
         token: impl Into<String>,
     ) -> Result<TokenVerification, CyberdropError> {
-        let url = self.join_path("api/tokens/verify")?;
         let payload = VerifyTokenRequest {
             token: token.into(),
         };
 
-        let response = self
-            .client
-            .post(url)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(CyberdropError::from)?;
+        let response: VerifyTokenResponse = self
+            .post_json("api/tokens/verify", &payload, false)
+            .await?;
 
-        if !response.status().is_success() {
-            return Err(CyberdropError::AuthenticationFailed(response.status()));
-        }
-
-        let body: VerifyTokenResponse = response.json().await?;
-        parse_verification_response(body)
+        TokenVerification::try_from(response)
     }
 
     /// List albums for the authenticated user.
     pub async fn list_albums(&self) -> Result<AlbumsList, CyberdropError> {
-        if self.auth_token.is_none() {
-            return Err(CyberdropError::MissingAuthToken);
-        }
-
-        let url = self.join_path("api/albums")?;
-        let response = self
-            .apply_auth(self.client.get(url))
-            .send()
-            .await
-            .map_err(CyberdropError::from)?;
-
-        if !response.status().is_success() {
-            return Err(CyberdropError::AuthenticationFailed(response.status()));
-        }
-
-        let body: AlbumsResponse = response.json().await?;
-        parse_albums_response(body)
+        let response: AlbumsResponse = self.get_json("api/albums", true).await?;
+        AlbumsList::try_from(response)
     }
 
     /// Create a new album.
@@ -145,29 +108,16 @@ impl CyberdropClient {
         name: impl Into<String>,
         description: Option<impl Into<String>>,
     ) -> Result<u64, CyberdropError> {
-        if self.auth_token.is_none() {
-            return Err(CyberdropError::MissingAuthToken);
-        }
-
-        let url = self.join_path("api/albums")?;
         let payload = CreateAlbumRequest {
             name: name.into(),
             description: description.map(Into::into),
         };
 
-        let response = self
-            .apply_auth(self.client.post(url))
-            .json(&payload)
-            .send()
-            .await
-            .map_err(CyberdropError::from)?;
+        let response: CreateAlbumResponse = self
+            .post_json("api/albums", &payload, true)
+            .await?;
 
-        if !response.status().is_success() {
-            return Err(CyberdropError::AuthenticationFailed(response.status()));
-        }
-
-        let body: CreateAlbumResponse = response.json().await?;
-        parse_create_album_response(body)
+        u64::try_from(response)
     }
 
     /// Upload a single file (up to service limits).
@@ -176,10 +126,6 @@ impl CyberdropClient {
         file_path: impl AsRef<Path>,
         album_id: Option<u64>,
     ) -> Result<UploadedFile, CyberdropError> {
-        if self.auth_token.is_none() {
-            return Err(CyberdropError::MissingAuthToken);
-        }
-
         let file_path = file_path.as_ref();
         let file_name = file_path
             .file_name()
@@ -190,36 +136,116 @@ impl CyberdropClient {
         let part = reqwest::multipart::Part::bytes(bytes).file_name(file_name.to_string());
         let form = Form::new().part("files[]", part);
 
-        let url = self.join_path("api/upload")?;
-        let response = self
-            .apply_auth(self.client.post(url))
-            .header("albumid", album_id.unwrap_or_default())
-            .multipart(form)
-            .send()
-            .await
-            .map_err(CyberdropError::from)?;
+        let response: UploadResponse = self
+            .post_multipart("api/upload", form, album_id)
+            .await?;
 
-        if !response.status().is_success() {
-            return Err(CyberdropError::AuthenticationFailed(response.status()));
+        UploadedFile::try_from(response)
+    }
+
+    async fn get_json<T>(&self, path: &str, requires_auth: bool) -> Result<T, CyberdropError>
+    where
+        T: DeserializeOwned,
+    {
+        let builder = self.build_request(Method::GET, path, requires_auth)?;
+        self.send_json(builder).await
+    }
+
+    async fn post_json<B, T>(
+        &self,
+        path: &str,
+        body: &B,
+        requires_auth: bool,
+    ) -> Result<T, CyberdropError>
+    where
+        B: serde::Serialize + ?Sized,
+        T: DeserializeOwned,
+    {
+        let builder = self
+            .build_request(Method::POST, path, requires_auth)?
+            .json(body);
+        self.send_json(builder).await
+    }
+
+    async fn post_multipart<T>(
+        &self,
+        path: &str,
+        form: Form,
+        album_id: Option<u64>,
+    ) -> Result<T, CyberdropError>
+    where
+        T: DeserializeOwned,
+    {
+        let mut builder = self.build_request(Method::POST, path, true)?;
+        if let Some(id) = album_id {
+            builder = builder.header("albumid", id);
+        }
+        let builder = builder.multipart(form);
+        self.send_json(builder).await
+    }
+
+    async fn send_json<T>(&self, builder: RequestBuilder) -> Result<T, CyberdropError>
+    where
+        T: DeserializeOwned,
+    {
+        let response = builder.send().await?;
+        Self::map_status(response.status())?;
+        Ok(response.json().await?)
+    }
+
+    fn build_request(
+        &self,
+        method: Method,
+        path: &str,
+        requires_auth: bool,
+    ) -> Result<RequestBuilder, CyberdropError> {
+        let url = self.join_path(path)?;
+        let builder = self.client.request(method, url);
+
+        if requires_auth {
+            self.apply_auth(builder)
+        } else {
+            Ok(builder)
+        }
+    }
+
+    fn map_status(status: StatusCode) -> Result<(), CyberdropError> {
+        if status.is_success() {
+            return Ok(());
         }
 
-        let body: UploadResponse = response.json().await?;
-        parse_upload_response(body)
+        if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+            Err(CyberdropError::AuthenticationFailed(status))
+        } else {
+            Err(CyberdropError::RequestFailed(status))
+        }
     }
 
     fn join_path(&self, path: &str) -> Result<Url, CyberdropError> {
         Ok(self.base_url.join(path)?)
     }
 
-    fn apply_auth(&self, builder: RequestBuilder) -> RequestBuilder {
-        if let Some(token) = &self.auth_token {
-            builder
-                .bearer_auth(token)
-                .header("Token", token)
-                .header("token", token)
-        } else {
-            builder
+    fn apply_auth(&self, builder: RequestBuilder) -> Result<RequestBuilder, CyberdropError> {
+        let token = self
+            .auth_token
+            .as_ref()
+            .ok_or(CyberdropError::MissingAuthToken)?;
+
+        Ok(Self::attach_token(builder, token))
+    }
+
+    fn apply_auth_if_present(&self, builder: RequestBuilder) -> RequestBuilder {
+        match &self.auth_token {
+            Some(token) => Self::attach_token(builder, token),
+            None => builder,
         }
+    }
+
+    fn attach_token(builder: RequestBuilder, token: &AuthToken) -> RequestBuilder {
+        builder
+            .bearer_auth(token.as_str())
+            .header("Token", token.as_str())
+            .header("token", token.as_str())
     }
 }
 
@@ -229,7 +255,7 @@ pub struct CyberdropClientBuilder {
     base_url: Option<Url>,
     user_agent: Option<String>,
     timeout: Duration,
-    auth_token: Option<String>,
+    auth_token: Option<AuthToken>,
     builder: ClientBuilder,
 }
 
@@ -258,7 +284,7 @@ impl CyberdropClientBuilder {
 
     /// Provide an auth token that will be sent as bearer auth.
     pub fn auth_token(mut self, token: impl Into<String>) -> Self {
-        self.auth_token = Some(token.into());
+        self.auth_token = Some(AuthToken::new(token));
         self
     }
 
@@ -291,91 +317,9 @@ fn default_user_agent() -> String {
     format!("cyberdrop-rs/{}", env!("CARGO_PKG_VERSION"))
 }
 
-fn parse_verification_response(
-    body: VerifyTokenResponse,
-) -> Result<TokenVerification, CyberdropError> {
-    let success = body.success.ok_or(CyberdropError::MissingField(
-        "verification response missing success",
-    ))?;
-    let username = body.username.ok_or(CyberdropError::MissingField(
-        "verification response missing username",
-    ))?;
-    let permissions = body.permissions.ok_or(CyberdropError::MissingField(
-        "verification response missing permissions",
-    ))?;
-
-    Ok(TokenVerification {
-        success,
-        username,
-        permissions,
-    })
-}
-
-fn parse_albums_response(body: AlbumsResponse) -> Result<AlbumsList, CyberdropError> {
-    let success = body.success.ok_or(CyberdropError::MissingField(
-        "albums response missing success",
-    ))?;
-
-    let albums = body.albums.ok_or(CyberdropError::MissingField(
-        "albums response missing albums",
-    ))?;
-
-    let home_domain = match body.home_domain {
-        Some(url) => Some(Url::parse(&url)?),
-        None => None,
-    };
-
-    Ok(AlbumsList {
-        success,
-        albums,
-        home_domain,
-    })
-}
-
-fn parse_create_album_response(body: CreateAlbumResponse) -> Result<u64, CyberdropError> {
-    if body.success.unwrap_or(false) {
-        return body.id.ok_or(CyberdropError::MissingField(
-            "create album response missing id",
-        ));
-    }
-
-    let msg = body
-        .description
-        .or(body.message)
-        .unwrap_or_else(|| "create album failed".to_string());
-
-    if msg.to_lowercase().contains("already an album") {
-        Err(CyberdropError::AlbumAlreadyExists(msg))
-    } else {
-        Err(CyberdropError::Api(msg))
-    }
-}
-
-fn parse_upload_response(body: UploadResponse) -> Result<UploadedFile, CyberdropError> {
-    if body.success.unwrap_or(false) {
-        let first =
-            body.files
-                .and_then(|mut files| files.pop())
-                .ok_or(CyberdropError::MissingField(
-                    "upload response missing files",
-                ))?;
-        let url = Url::parse(&first.url)?;
-        Ok(UploadedFile {
-            name: first.name,
-            url: url.to_string(),
-        })
-    } else {
-        let msg = body
-            .description
-            .unwrap_or_else(|| "upload failed".to_string());
-        Err(CyberdropError::Api(msg))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::CreateAlbumResponse;
 
     #[test]
     fn builds_with_defaults() {
@@ -419,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_verification_response() {
+    fn converts_verification_response() {
         let response = VerifyTokenResponse {
             success: Some(true),
             username: Some("yesboi".into()),
@@ -432,7 +376,7 @@ mod tests {
             }),
         };
 
-        let verification = parse_verification_response(response).unwrap();
+        let verification = TokenVerification::try_from(response).unwrap();
         assert!(verification.success);
         assert_eq!(verification.username, "yesboi");
         assert!(verification.permissions.user);
@@ -440,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_albums_response() {
+    fn converts_albums_response() {
         let response = AlbumsResponse {
             success: Some(true),
             albums: Some(vec![Album {
@@ -457,7 +401,7 @@ mod tests {
             home_domain: Some("https://cyberdrop.cr/".into()),
         };
 
-        let result = parse_albums_response(response).unwrap();
+        let result = AlbumsList::try_from(response).unwrap();
         assert!(result.success);
         assert_eq!(result.albums.len(), 1);
         assert_eq!(result.albums[0].identifier, "quLyYpj0");
@@ -468,26 +412,26 @@ mod tests {
     }
 
     #[test]
-    fn parse_create_album_success() {
+    fn convert_create_album_success() {
         let response = CreateAlbumResponse {
             success: Some(true),
             id: Some(123),
             message: None,
             description: None,
         };
-        let id = parse_create_album_response(response).unwrap();
+        let id = u64::try_from(response).unwrap();
         assert_eq!(id, 123);
     }
 
     #[test]
-    fn parse_create_album_duplicate_maps_error() {
+    fn convert_create_album_duplicate_maps_error() {
         let response = CreateAlbumResponse {
             success: Some(false),
             id: None,
             message: None,
             description: Some("There is already an album with that name.".into()),
         };
-        match parse_create_album_response(response) {
+        match u64::try_from(response) {
             Err(CyberdropError::AlbumAlreadyExists(msg)) => {
                 assert!(msg.contains("already an album"));
             }
@@ -496,14 +440,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_create_album_other_error_maps_api() {
+    fn convert_create_album_other_error_maps_api() {
         let response = CreateAlbumResponse {
             success: Some(false),
             id: None,
             message: None,
             description: Some("No album name specified.".into()),
         };
-        match parse_create_album_response(response) {
+        match u64::try_from(response) {
             Err(CyberdropError::Api(msg)) => {
                 assert!(msg.contains("No album name specified"));
             }
@@ -512,7 +456,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_upload_response_success() {
+    fn convert_upload_response_success() {
         let response = UploadResponse {
             success: Some(true),
             description: None,
@@ -522,20 +466,20 @@ mod tests {
             }]),
         };
 
-        let file = parse_upload_response(response).unwrap();
+        let file = UploadedFile::try_from(response).unwrap();
         assert_eq!(file.name, "file.mp4");
         assert!(file.url.contains("/f/abc123"));
     }
 
     #[test]
-    fn parse_upload_response_failure_maps_api() {
+    fn convert_upload_response_failure_maps_api() {
         let response = UploadResponse {
             success: Some(false),
             description: Some("upload failed".into()),
             files: None,
         };
 
-        match parse_upload_response(response) {
+        match UploadedFile::try_from(response) {
             Err(CyberdropError::Api(msg)) => assert!(msg.contains("upload failed")),
             other => panic!("expected Api error, got {other:?}"),
         }
