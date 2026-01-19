@@ -85,6 +85,14 @@ impl Transport {
         if let Some(id) = album_id {
             builder = builder.header("albumid", id);
         }
+        builder = builder
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("striptags", "undefined")
+            .header("Origin", "https://cyberdrop.cr")
+            .header("Referer", "https://cyberdrop.cr/")
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache");
+
         let builder = builder.multipart(form);
         self.send_json(builder).await
     }

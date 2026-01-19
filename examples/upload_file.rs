@@ -1,4 +1,5 @@
 use cyberdrop_client::CyberdropClient;
+use std::time::Duration;
 
 fn take_arg_or_env(args: &mut impl Iterator<Item = String>, env_key: &str, arg_name: &str) -> String {
     args.next()
@@ -23,7 +24,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|v| v.parse::<u64>().ok()),
     };
 
-    let client = CyberdropClient::builder().build()?;
+    let client = CyberdropClient::builder()
+        .base_url("https://sun.cyberdrop.cr/")?
+        .timeout(Duration::from_secs(120))
+        .build()?;
     let token = client.login(username, password).await?;
     let client = client.with_auth_token(token.into_string());
 
