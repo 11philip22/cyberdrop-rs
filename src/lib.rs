@@ -1,3 +1,86 @@
+//! Cyberdrop API client.
+//!
+//! This crate provides a small, async wrapper around a subset of Cyberdrop's HTTP API.
+//! It is built on [`reqwest`] and is intended to be copy-paste friendly in CLI tools and
+//! simple services.
+//!
+//! ## Quickstart
+//!
+//! Authenticate, then call endpoints that require a token:
+//!
+//! ```no_run
+//! use cyberdrop_client::CyberdropClient;
+//! use std::path::Path;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
+//! // 1) Create an unauthenticated client.
+//! let client = CyberdropClient::builder().build()?;
+//!
+//! // 2) Exchange credentials for a token.
+//! let token = client.login("username", "password").await?;
+//!
+//! // 3) Use a cloned client that includes the token on authenticated requests.
+//! let authed = client.with_auth_token(token.into_string());
+//! let albums = authed.list_albums().await?;
+//! println!("albums: {}", albums.albums.len());
+//!
+//! // 4) Create an album and upload a file into it.
+//! let album_id = authed
+//!     .create_album("my uploads", Some("created by cyberdrop-client"))
+//!     .await?;
+//! let uploaded = authed
+//!     .upload_file(Path::new("path/to/file.jpg"), Some(album_id))
+//!     .await?;
+//! println!("uploaded {} -> {}", uploaded.name, uploaded.url);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Note: the current `upload_file` implementation reads the entire file into memory before
+//! uploading.
+//!
+//! ## Authentication
+//!
+//! Authenticated endpoints use an HTTP header named `token` (not an `Authorization: Bearer ...`
+//! header). Methods that *require* authentication return [`CyberdropError::MissingAuthToken`]
+//! if no token is configured.
+//!
+//! ## Timeouts, Retries, Polling
+//!
+//! - **Timeouts:** The client uses a single *request* timeout configured via
+//!   [`CyberdropClientBuilder::timeout`]. The default is 30 seconds. Timeout failures surface as
+//!   [`CyberdropError::Http`] (from `reqwest`).
+//! - **Retries:** This crate does not implement retries, backoff, or idempotency safeguards.
+//!   If you need retries, add them at the call site.
+//! - **Polling:** This crate does not poll for eventual consistency. Methods return once the HTTP
+//!   request/response completes.
+//!
+//! ## Error Model
+//!
+//! Higher-level API methods (for example, [`CyberdropClient::list_albums`]) treat non-2xx HTTP
+//! responses as errors:
+//! - `401`/`403` become [`CyberdropError::AuthenticationFailed`]
+//! - other non-2xx statuses become [`CyberdropError::RequestFailed`]
+//!
+//! In contrast, [`CyberdropClient::get`] is low-level and returns the raw response even for
+//! non-2xx statuses.
+//!
+//! External system failures are surfaced as:
+//! - [`CyberdropError::Io`] when reading local files (for example, in [`CyberdropClient::upload_file`])
+//! - [`CyberdropError::Http`] for network/transport failures (DNS, TLS, connection errors, timeouts)
+//!
+//! ## Base URL Semantics
+//!
+//! The base URL is joined with relative paths via [`Url::join`]. If you supply a custom base URL,
+//! prefer including a trailing slash (for example, `https://example.test/`), so relative joins
+//! behave as expected.
+//!
+//! ## Low-Level Requests
+//!
+//! [`CyberdropClient::get`] is intentionally low-level: it returns the raw [`reqwest::Response`]
+//! and does **not** treat non-2xx status codes as errors.
+
 use std::{path::Path, time::Duration};
 
 use reqwest::{multipart::Form, Client, ClientBuilder, Url};
@@ -49,7 +132,10 @@ const CHUNK_SIZE: u64 = 95_000_000;
 const DEFAULT_BASE_URL: &str = "https://cyberdrop.cr/";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Async HTTP client for Cyberdrop endpoints.
+/// Async HTTP client for a subset of Cyberdrop endpoints.
+///
+/// Most higher-level methods map non-2xx responses to [`CyberdropError`]. For raw access where
+/// you want to inspect status codes and bodies directly, use [`CyberdropClient::get`].
 #[derive(Debug, Clone)]
 pub struct CyberdropClient {
     transport: Transport,
@@ -57,11 +143,19 @@ pub struct CyberdropClient {
 
 impl CyberdropClient {
     /// Build a client with a custom base URL.
+    ///
+    /// `base_url` is parsed as a [`Url`]. It is then used as the base for relative API paths via
+    /// [`Url::join`], so a trailing slash is recommended.
     pub fn new(base_url: impl AsRef<str>) -> Result<Self, CyberdropError> {
         CyberdropClientBuilder::new().base_url(base_url)?.build()
     }
 
-    /// Start configuring a client with sensible defaults.
+    /// Start configuring a client with the crate's defaults.
+    ///
+    /// Defaults:
+    /// - Base URL: `https://cyberdrop.cr/`
+    /// - Timeout: 30 seconds
+    /// - User agent: a browser-like UA string
     pub fn builder() -> CyberdropClientBuilder {
         CyberdropClientBuilder::new()
     }
@@ -76,18 +170,38 @@ impl CyberdropClient {
         self.transport.auth_token()
     }
 
-    /// Return a clone of this client that applies bearer auth to requests.
+    /// Return a clone of this client that applies authentication to requests.
+    ///
+    /// The token is attached as an HTTP header named `token`.
     pub fn with_auth_token(mut self, token: impl Into<String>) -> Self {
         self.transport = self.transport.with_auth_token(token);
         self
     }
 
-    /// Execute a GET request against a relative path on the Cyberdrop API.
+    /// Execute a GET request against a relative path on the configured base URL.
+    ///
+    /// This method returns the raw [`reqwest::Response`] and does **not** convert non-2xx status
+    /// codes into errors. If a token is configured, it will be attached, but authentication is
+    /// not required.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CyberdropError::Http`] on transport failures (including timeouts). This method
+    /// does not map HTTP status codes to [`CyberdropError`] variants.
     pub async fn get(&self, path: impl AsRef<str>) -> Result<reqwest::Response, CyberdropError> {
         self.transport.get_raw(path.as_ref()).await
     }
 
-    /// Authenticate to retrieve a bearer token.
+    /// Authenticate and retrieve a token.
+    ///
+    /// The returned token can be installed on a client via [`CyberdropClient::with_auth_token`]
+    /// or [`CyberdropClientBuilder::auth_token`].
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::MissingToken`] if the response body omits the token field
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
     pub async fn login(
         &self,
         username: impl Into<String>,
@@ -103,7 +217,16 @@ impl CyberdropClient {
         AuthToken::try_from(response)
     }
 
-    /// Verify a bearer token and fetch associated permissions.
+    /// Verify a token and fetch associated permissions.
+    ///
+    /// This request does not require the client to be authenticated; the token to verify is
+    /// supplied in the request body.
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
     pub async fn verify_token(
         &self,
         token: impl Into<String>,
@@ -119,12 +242,33 @@ impl CyberdropClient {
     }
 
     /// List albums for the authenticated user.
+    ///
+    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
     pub async fn list_albums(&self) -> Result<AlbumsList, CyberdropError> {
         let response: AlbumsResponse = self.transport.get_json("api/albums", true).await?;
         AlbumsList::try_from(response)
     }
 
-    /// Create a new album.
+    /// Create a new album and return its numeric ID.
+    ///
+    /// Requires an auth token. If the service reports that an album with a similar name already
+    /// exists, this returns [`CyberdropError::AlbumAlreadyExists`].
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::AlbumAlreadyExists`] if the service indicates an album already exists
+    /// - [`CyberdropError::Api`] for other service-reported failures
+    /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
     pub async fn create_album(
         &self,
         name: impl Into<String>,
@@ -141,7 +285,25 @@ impl CyberdropClient {
         u64::try_from(response)
     }
 
-    /// Upload a single file (chunked, up to service limits).
+    /// Upload a single file.
+    ///
+    /// Requires an auth token.
+    ///
+    /// Implementation notes:
+    /// - The file is currently read fully into memory before uploading.
+    /// - Files larger than `95_000_000` bytes are uploaded in chunks.
+    /// - If `album_id` is provided, it is sent as an `albumid` header on the chunk/single-upload
+    ///   requests and included in the `finishchunks` payload.
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::InvalidFileName`] if `file_path` does not have a valid UTF-8 file name
+    /// - [`CyberdropError::Io`] if reading the file fails
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] if the service reports an upload failure (including per-chunk failures)
+    /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
     pub async fn upload_file(
         &self,
         file_path: impl AsRef<Path>,
@@ -248,6 +410,9 @@ pub struct CyberdropClientBuilder {
 }
 
 impl CyberdropClientBuilder {
+    /// Create a new builder using the crate defaults.
+    ///
+    /// This is equivalent to [`CyberdropClient::builder`].
     pub fn new() -> Self {
         Self {
             base_url: None,
@@ -277,11 +442,18 @@ impl CyberdropClientBuilder {
     }
 
     /// Configure the request timeout.
+    ///
+    /// This sets [`reqwest::ClientBuilder::timeout`], which applies a single deadline per request.
+    /// Timeout failures surface as [`CyberdropError::Http`].
     pub fn timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
+    /// Build a [`CyberdropClient`].
+    ///
+    /// If no base URL is configured, this uses `https://cyberdrop.cr/`.
+    /// If no user agent is configured, a browser-like UA string is used.
     pub fn build(self) -> Result<CyberdropClient, CyberdropError> {
         let base_url = match self.base_url {
             Some(url) => url,

@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::CyberdropError;
 
+/// Authentication token returned by [`crate::CyberdropClient::login`].
+///
+/// This type is `#[serde(transparent)]` and typically deserializes from a JSON string.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
 pub struct AuthToken {
@@ -10,53 +13,86 @@ pub struct AuthToken {
 }
 
 impl AuthToken {
+    /// Construct a new token wrapper.
     pub fn new(token: impl Into<String>) -> Self {
         Self { token: token.into() }
     }
 
+    /// Borrow the underlying token string.
     pub fn as_str(&self) -> &str {
         &self.token
     }
 
+    /// Consume this value and return the underlying token string.
     pub fn into_string(self) -> String {
         self.token
     }
 }
 
+/// Permission flags associated with a user/token verification response.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Permissions {
+    /// Whether the account has "user" privileges.
     pub user: bool,
+    /// Whether the account has "poweruser" privileges.
     pub poweruser: bool,
+    /// Whether the account has "moderator" privileges.
     pub moderator: bool,
+    /// Whether the account has "admin" privileges.
     pub admin: bool,
+    /// Whether the account has "superadmin" privileges.
     pub superadmin: bool,
 }
 
+/// Result of verifying a token via [`crate::CyberdropClient::verify_token`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TokenVerification {
+    /// Whether the token verification succeeded.
     pub success: bool,
+    /// Username associated with the token.
     pub username: String,
+    /// Permission flags associated with the token.
     pub permissions: Permissions,
 }
 
+/// Album metadata as returned by the Cyberdrop API.
+///
+/// Field semantics (timestamps/flags) are intentionally documented minimally: values are exposed
+/// as returned by the service without additional interpretation.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Album {
+    /// Album numeric ID.
     pub id: u64,
+    /// Display name.
     pub name: String,
+    /// Service-provided timestamp value.
     pub timestamp: u64,
+    /// Service-provided identifier string.
     pub identifier: String,
+    /// Service-provided "edited at" timestamp value.
     pub edited_at: u64,
+    /// Service-provided download flag.
     pub download: bool,
+    /// Service-provided public flag.
     pub public: bool,
+    /// Album description (may be empty).
     pub description: String,
+    /// Number of files in the album.
     pub files: u64,
 }
 
+/// Album listing for the authenticated user.
+///
+/// Values produced by this crate always have `success == true`; failures are returned as
+/// [`CyberdropError`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlbumsList {
+    /// Whether the API request was successful.
     pub success: bool,
+    /// Albums returned by the service.
     pub albums: Vec<Album>,
+    /// Optional home domain returned by the service, parsed as a URL.
     pub home_domain: Option<Url>,
 }
 
@@ -82,9 +118,12 @@ pub struct UploadResponse {
     pub files: Option<Vec<UploadedFile>>,
 }
 
+/// Uploaded file metadata returned by [`crate::CyberdropClient::upload_file`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct UploadedFile {
+    /// Name of the uploaded file.
     pub name: String,
+    /// URL of the uploaded file (stringified URL).
     pub url: String,
 }
 
