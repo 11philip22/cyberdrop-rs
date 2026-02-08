@@ -15,7 +15,9 @@ pub struct AuthToken {
 impl AuthToken {
     /// Construct a new token wrapper.
     pub fn new(token: impl Into<String>) -> Self {
-        Self { token: token.into() }
+        Self {
+            token: token.into(),
+        }
     }
 
     /// Borrow the underlying token string.
@@ -226,9 +228,9 @@ impl TryFrom<AlbumsResponse> for AlbumsList {
             return Err(CyberdropError::Api("failed to fetch albums".into()));
         }
 
-        let albums = body
-            .albums
-            .ok_or(CyberdropError::MissingField("albums response missing albums"))?;
+        let albums = body.albums.ok_or(CyberdropError::MissingField(
+            "albums response missing albums",
+        ))?;
 
         let home_domain = match body.home_domain {
             Some(url) => Some(Url::parse(&url)?),
@@ -271,12 +273,9 @@ impl TryFrom<UploadResponse> for UploadedFile {
 
     fn try_from(body: UploadResponse) -> Result<Self, Self::Error> {
         if body.success.unwrap_or(false) {
-            let first = body
-                .files
-                .and_then(|mut files| files.pop())
-                .ok_or(CyberdropError::MissingField(
-                    "upload response missing files",
-                ))?;
+            let first = body.files.and_then(|mut files| files.pop()).ok_or(
+                CyberdropError::MissingField("upload response missing files"),
+            )?;
             let url = Url::parse(&first.url)?;
             Ok(UploadedFile {
                 name: first.name,

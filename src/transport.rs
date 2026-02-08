@@ -1,7 +1,7 @@
 use reqwest::{
-    header::{HeaderName, ACCEPT, ACCEPT_LANGUAGE},
-    multipart::{Form, Part},
     Client, Method, RequestBuilder, StatusCode, Url,
+    header::{ACCEPT, ACCEPT_LANGUAGE, HeaderName},
+    multipart::{Form, Part},
 };
 use serde::de::DeserializeOwned;
 
@@ -36,10 +36,7 @@ impl Transport {
         self
     }
 
-    pub(crate) async fn get_raw(
-        &self,
-        path: &str,
-    ) -> Result<reqwest::Response, CyberdropError> {
+    pub(crate) async fn get_raw(&self, path: &str) -> Result<reqwest::Response, CyberdropError> {
         let builder = self.apply_auth_if_present(self.client.get(self.join_path(path)?));
         builder.send().await.map_err(CyberdropError::from)
     }
@@ -287,12 +284,21 @@ mod tests {
         assert!(Transport::map_status(StatusCode::OK).is_ok());
 
         let auth_err = Transport::map_status(StatusCode::UNAUTHORIZED).unwrap_err();
-        matches!(auth_err, CyberdropError::AuthenticationFailed(StatusCode::UNAUTHORIZED));
+        matches!(
+            auth_err,
+            CyberdropError::AuthenticationFailed(StatusCode::UNAUTHORIZED)
+        );
 
         let forbidden = Transport::map_status(StatusCode::FORBIDDEN).unwrap_err();
-        matches!(forbidden, CyberdropError::AuthenticationFailed(StatusCode::FORBIDDEN));
+        matches!(
+            forbidden,
+            CyberdropError::AuthenticationFailed(StatusCode::FORBIDDEN)
+        );
 
         let server_err = Transport::map_status(StatusCode::INTERNAL_SERVER_ERROR).unwrap_err();
-        matches!(server_err, CyberdropError::RequestFailed(StatusCode::INTERNAL_SERVER_ERROR));
+        matches!(
+            server_err,
+            CyberdropError::RequestFailed(StatusCode::INTERNAL_SERVER_ERROR)
+        );
     }
 }

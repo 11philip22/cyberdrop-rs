@@ -1,6 +1,10 @@
 use cyberdrop_client::CyberdropClient;
 
-fn take_arg_or_env(args: &mut impl Iterator<Item = String>, env_key: &str, arg_name: &str) -> String {
+fn take_arg_or_env(
+    args: &mut impl Iterator<Item = String>,
+    env_key: &str,
+    arg_name: &str,
+) -> String {
     args.next()
         .or_else(|| std::env::var(env_key).ok())
         .unwrap_or_else(|| panic!("provide {} as arg or set {}", arg_name, env_key))

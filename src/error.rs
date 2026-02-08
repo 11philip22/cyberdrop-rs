@@ -33,6 +33,9 @@ pub enum CyberdropError {
     /// The service indicates an album already exists (as interpreted by this crate).
     #[error("folder already present: {0}")]
     AlbumAlreadyExists(String),
+    /// Requested album ID was not present in the authenticated user's album list.
+    #[error("album not found: {0}")]
+    AlbumNotFound(u64),
     /// The API returned an error message or an unexpected response shape.
     #[error("api error: {0}")]
     Api(String),

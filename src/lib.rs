@@ -81,12 +81,14 @@
 //! [`CyberdropClient::get`] is intentionally low-level: it returns the raw [`reqwest::Response`]
 //! and does **not** treat non-2xx status codes as errors.
 
+mod client;
 mod error;
 mod models;
 mod transport;
-mod client;
 
+pub(crate) use client::ChunkFields;
 pub use client::{CyberdropClient, CyberdropClientBuilder};
 pub use error::CyberdropError;
-pub use models::{Album, AlbumsList, AuthToken, EditAlbumResult, Permissions, TokenVerification, UploadedFile};
-pub(crate) use client::ChunkFields;
+pub use models::{
+    Album, AlbumsList, AuthToken, EditAlbumResult, Permissions, TokenVerification, UploadedFile,
+};

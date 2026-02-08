@@ -1,6 +1,6 @@
 use std::{path::Path, time::Duration};
 
-use reqwest::{multipart::Form, Client, ClientBuilder, Url};
+use reqwest::{Client, ClientBuilder, Url, multipart::Form};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -9,7 +9,9 @@ use crate::models::{
     LoginRequest, LoginResponse, UploadResponse, VerifyTokenRequest, VerifyTokenResponse,
 };
 use crate::transport::Transport;
-use crate::{AuthToken, AlbumsList, CyberdropError, EditAlbumResult, TokenVerification, UploadedFile};
+use crate::{
+    AlbumsList, AuthToken, CyberdropError, EditAlbumResult, TokenVerification, UploadedFile,
+};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkFields {
@@ -124,7 +126,10 @@ impl CyberdropClient {
             password: password.into(),
         };
 
-        let response: LoginResponse = self.transport.post_json("api/login", &payload, false).await?;
+        let response: LoginResponse = self
+            .transport
+            .post_json("api/login", &payload, false)
+            .await?;
 
         AuthToken::try_from(response)
     }
@@ -143,10 +148,14 @@ impl CyberdropClient {
         &self,
         token: impl Into<String>,
     ) -> Result<TokenVerification, CyberdropError> {
-        let payload = VerifyTokenRequest { token: token.into() };
+        let payload = VerifyTokenRequest {
+            token: token.into(),
+        };
 
-        let response: VerifyTokenResponse =
-            self.transport.post_json("api/tokens/verify", &payload, false).await?;
+        let response: VerifyTokenResponse = self
+            .transport
+            .post_json("api/tokens/verify", &payload, false)
+            .await?;
 
         TokenVerification::try_from(response)
     }
@@ -189,7 +198,10 @@ impl CyberdropClient {
             description: description.map(Into::into),
         };
 
-        let response: CreateAlbumResponse = self.transport.post_json("api/albums", &payload, true).await?;
+        let response: CreateAlbumResponse = self
+            .transport
+            .post_json("api/albums", &payload, true)
+            .await?;
 
         u64::try_from(response)
     }
@@ -237,6 +249,45 @@ impl CyberdropClient {
             .await?;
 
         EditAlbumResult::try_from(response)
+    }
+
+    /// Request a new public link identifier for an existing album, preserving its current settings.
+    ///
+    /// This is a convenience wrapper around:
+    /// 1) [`CyberdropClient::list_albums`] (to fetch current album settings)
+    /// 2) [`CyberdropClient::edit_album`] with `request_new_link = true`
+    ///
+    /// # Returns
+    ///
+    /// The new album identifier string as returned by the API.
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::AlbumNotFound`] if `album_id` is not present in the album list
+    /// - Any error returned by [`CyberdropClient::list_albums`] or [`CyberdropClient::edit_album`]
+    /// - [`CyberdropError::MissingField`] if the API omits the new identifier
+    pub async fn request_new_album_link(&self, album_id: u64) -> Result<String, CyberdropError> {
+        let albums = self.list_albums().await?;
+        let album = albums
+            .albums
+            .into_iter()
+            .find(|album| album.id == album_id)
+            .ok_or(CyberdropError::AlbumNotFound(album_id))?;
+
+        let edited = self
+            .edit_album(
+                album_id,
+                album.name,
+                album.description,
+                album.download,
+                album.public,
+                true,
+            )
+            .await?;
+
+        edited.identifier.ok_or(CyberdropError::MissingField(
+            "edit album response missing identifier",
+        ))
     }
 
     /// Upload a single file.
@@ -320,7 +371,11 @@ impl CyberdropClient {
                 )
                 .await?;
 
-            if !response.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+            if !response
+                .get("success")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+            {
                 return Err(CyberdropError::Api(format!("chunk {} failed", chunk_index)));
             }
         }

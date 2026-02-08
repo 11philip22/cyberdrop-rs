@@ -15,21 +15,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args().skip(1);
     let username = take_arg_or_env(&mut args, "CYBERDROP_USERNAME", "username");
     let password = take_arg_or_env(&mut args, "CYBERDROP_PASSWORD", "password");
-    let album_name = args.next().unwrap_or_else(|| "test".to_string());
-    let description = args.next();
+
+    let album_id = args
+        .next()
+        .expect(
+            "usage: cargo run --example request_new_album_link -- <username> <password> <album_id>",
+        )
+        .parse::<u64>()
+        .expect("album_id must be a number");
 
     let client = CyberdropClient::builder().build()?;
     let token = client.login(username, password).await?;
     let client = client.with_auth_token(token.into_string());
 
-    match client.create_album(album_name, description).await {
-        Ok(album_id) => {
-            println!("Created album with id {}", album_id);
-            Ok(())
-        }
-        Err(err) => {
-            eprintln!("Failed to create album: {err}");
-            Err(err.into())
-        }
-    }
+    let identifier = client.request_new_album_link(album_id).await?;
+    println!("Requested new link for album {album_id}; new identifier: {identifier}");
+
+    Ok(())
 }

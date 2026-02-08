@@ -1,7 +1,11 @@
 use cyberdrop_client::CyberdropClient;
 use std::time::Duration;
 
-fn take_arg_or_env(args: &mut impl Iterator<Item = String>, env_key: &str, arg_name: &str) -> String {
+fn take_arg_or_env(
+    args: &mut impl Iterator<Item = String>,
+    env_key: &str,
+    arg_name: &str,
+) -> String {
     args.next()
         .or_else(|| std::env::var(env_key).ok())
         .unwrap_or_else(|| panic!("provide {} as arg or set {}", arg_name, env_key))
@@ -13,9 +17,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let username = take_arg_or_env(&mut args, "CYBERDROP_USERNAME", "username");
     let password = take_arg_or_env(&mut args, "CYBERDROP_PASSWORD", "password");
 
-    let file_path = args
-        .next()
-        .expect("usage: cargo run --example upload_file -- <username> <password> <path> [album_id]");
+    let file_path = args.next().expect(
+        "usage: cargo run --example upload_file -- <username> <password> <path> [album_id]",
+    );
 
     let album_id = match args.next() {
         Some(v) => Some(v.parse::<u64>().expect("album_id must be a number")),
