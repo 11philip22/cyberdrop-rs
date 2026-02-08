@@ -10,9 +10,14 @@ use crate::models::{
     RegisterRequest, RegisterResponse, VerifyTokenRequest, VerifyTokenResponse,
 };
 use crate::transport::Transport;
+use crate::utils::default_user_agent;
 use crate::{
     AlbumsList, AuthToken, CyberdropError, EditAlbumResult, TokenVerification, UploadedFile,
 };
+
+const CHUNK_SIZE: u64 = 95_000_000;
+const DEFAULT_BASE_URL: &str = "https://cyberdrop.cr/";
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkFields {
@@ -61,10 +66,6 @@ pub struct CyberdropClientBuilder {
     auth_token: Option<AuthToken>,
     builder: ClientBuilder,
 }
-
-const CHUNK_SIZE: u64 = 95_000_000;
-const DEFAULT_BASE_URL: &str = "https://cyberdrop.cr/";
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl CyberdropClient {
     /// Build a client with a custom base URL.
@@ -766,9 +767,4 @@ impl CyberdropClientBuilder {
             transport: Transport::new(client, base_url, self.auth_token),
         })
     }
-}
-
-fn default_user_agent() -> String {
-    // Match a browser UA; the service appears to expect browser-like clients.
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) Gecko/20100101 Firefox/147.0".into()
 }
