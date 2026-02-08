@@ -56,6 +56,16 @@ pub struct CyberdropClient {
     transport: Transport,
 }
 
+/// Builder for [`CyberdropClient`].
+#[derive(Debug)]
+pub struct CyberdropClientBuilder {
+    base_url: Option<Url>,
+    user_agent: Option<String>,
+    timeout: Duration,
+    auth_token: Option<AuthToken>,
+    builder: ClientBuilder,
+}
+
 impl CyberdropClient {
     /// Build a client with a custom base URL.
     ///
@@ -664,15 +674,6 @@ impl CyberdropClient {
     }
 }
 
-/// Builder for [`CyberdropClient`].
-#[derive(Debug)]
-pub struct CyberdropClientBuilder {
-    base_url: Option<Url>,
-    user_agent: Option<String>,
-    timeout: Duration,
-    auth_token: Option<AuthToken>,
-    builder: ClientBuilder,
-}
 
 impl CyberdropClientBuilder {
     /// Create a new builder using the crate defaults.
