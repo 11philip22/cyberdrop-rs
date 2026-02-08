@@ -92,6 +92,15 @@ impl CyberdropClient {
         self
     }
 
+    async fn get_album_by_id(&self, album_id: u64) -> Result<crate::models::Album, CyberdropError> {
+        let albums = self.list_albums().await?;
+        albums
+            .albums
+            .into_iter()
+            .find(|album| album.id == album_id)
+            .ok_or(CyberdropError::AlbumNotFound(album_id))
+    }
+
     /// Execute a GET request against a relative path on the configured base URL.
     ///
     /// This method returns the raw [`reqwest::Response`] and does **not** convert non-2xx status
@@ -257,22 +266,25 @@ impl CyberdropClient {
     /// 1) [`CyberdropClient::list_albums`] (to fetch current album settings)
     /// 2) [`CyberdropClient::edit_album`] with `request_new_link = true`
     ///
+    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
+    ///
     /// # Returns
     ///
     /// The new album public URL in the form `https://cyberdrop.cr/a/<identifier>`.
     ///
+    /// Note: this URL is always built against `https://cyberdrop.cr/` (it does not use the
+    /// client's configured base URL).
+    ///
     /// # Errors
     ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
     /// - [`CyberdropError::AlbumNotFound`] if `album_id` is not present in the album list
-    /// - Any error returned by [`CyberdropClient::list_albums`] or [`CyberdropClient::edit_album`]
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] for service-reported failures
     /// - [`CyberdropError::MissingField`] if the API omits the new identifier
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
     pub async fn request_new_album_link(&self, album_id: u64) -> Result<String, CyberdropError> {
-        let albums = self.list_albums().await?;
-        let album = albums
-            .albums
-            .into_iter()
-            .find(|album| album.id == album_id)
-            .ok_or(CyberdropError::AlbumNotFound(album_id))?;
+        let album = self.get_album_by_id(album_id).await?;
 
         let edited = self
             .edit_album(
@@ -291,6 +303,154 @@ impl CyberdropClient {
 
         let identifier = identifier.trim_start_matches('/');
         Ok(format!("https://cyberdrop.cr/a/{identifier}"))
+    }
+
+    /// Update an album name, preserving existing description and visibility flags.
+    ///
+    /// This is a convenience wrapper around:
+    /// 1) [`CyberdropClient::list_albums`] (to fetch current album settings)
+    /// 2) [`CyberdropClient::edit_album`] with `request_new_link = false`
+    ///
+    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
+    ///
+    /// # Returns
+    ///
+    /// The API response mapped into an [`EditAlbumResult`].
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AlbumNotFound`] if `album_id` is not present in the album list
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] for service-reported failures
+    /// - [`CyberdropError::MissingField`] if the response is missing expected fields
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
+    pub async fn set_album_name(
+        &self,
+        album_id: u64,
+        name: impl Into<String>,
+    ) -> Result<EditAlbumResult, CyberdropError> {
+        let album = self.get_album_by_id(album_id).await?;
+        self.edit_album(
+            album_id,
+            name,
+            album.description,
+            album.download,
+            album.public,
+            false,
+        )
+        .await
+    }
+
+    /// Update an album description, preserving existing name and visibility flags.
+    ///
+    /// This is a convenience wrapper around:
+    /// 1) [`CyberdropClient::list_albums`] (to fetch current album settings)
+    /// 2) [`CyberdropClient::edit_album`] with `request_new_link = false`
+    ///
+    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
+    ///
+    /// # Returns
+    ///
+    /// The API response mapped into an [`EditAlbumResult`].
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AlbumNotFound`] if `album_id` is not present in the album list
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] for service-reported failures
+    /// - [`CyberdropError::MissingField`] if the response is missing expected fields
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
+    pub async fn set_album_description(
+        &self,
+        album_id: u64,
+        description: impl Into<String>,
+    ) -> Result<EditAlbumResult, CyberdropError> {
+        let album = self.get_album_by_id(album_id).await?;
+        self.edit_album(
+            album_id,
+            album.name,
+            description,
+            album.download,
+            album.public,
+            false,
+        )
+        .await
+    }
+
+    /// Update an album download flag, preserving existing name/description and public flag.
+    ///
+    /// This is a convenience wrapper around:
+    /// 1) [`CyberdropClient::list_albums`] (to fetch current album settings)
+    /// 2) [`CyberdropClient::edit_album`] with `request_new_link = false`
+    ///
+    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
+    ///
+    /// # Returns
+    ///
+    /// The API response mapped into an [`EditAlbumResult`].
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AlbumNotFound`] if `album_id` is not present in the album list
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] for service-reported failures
+    /// - [`CyberdropError::MissingField`] if the response is missing expected fields
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
+    pub async fn set_album_download(
+        &self,
+        album_id: u64,
+        download: bool,
+    ) -> Result<EditAlbumResult, CyberdropError> {
+        let album = self.get_album_by_id(album_id).await?;
+        self.edit_album(
+            album_id,
+            album.name,
+            album.description,
+            download,
+            album.public,
+            false,
+        )
+        .await
+    }
+
+    /// Update an album public flag, preserving existing name/description and download flag.
+    ///
+    /// This is a convenience wrapper around:
+    /// 1) [`CyberdropClient::list_albums`] (to fetch current album settings)
+    /// 2) [`CyberdropClient::edit_album`] with `request_new_link = false`
+    ///
+    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
+    ///
+    /// # Returns
+    ///
+    /// The API response mapped into an [`EditAlbumResult`].
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AlbumNotFound`] if `album_id` is not present in the album list
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] for service-reported failures
+    /// - [`CyberdropError::MissingField`] if the response is missing expected fields
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
+    pub async fn set_album_public(
+        &self,
+        album_id: u64,
+        public: bool,
+    ) -> Result<EditAlbumResult, CyberdropError> {
+        let album = self.get_album_by_id(album_id).await?;
+        self.edit_album(
+            album_id,
+            album.name,
+            album.description,
+            album.download,
+            public,
+            false,
+        )
+        .await
     }
 
     /// Upload a single file.
