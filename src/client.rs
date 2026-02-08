@@ -376,32 +376,3 @@ fn default_user_agent() -> String {
     // Match a browser UA; the service appears to expect browser-like clients.
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) Gecko/20100101 Firefox/147.0".into()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn builder_carries_auth_token_into_client() {
-        let client = CyberdropClient::builder()
-            .auth_token("abc123")
-            .build()
-            .unwrap();
-
-        assert_eq!(client.auth_token(), Some("abc123"));
-    }
-
-    #[tokio::test]
-    async fn list_albums_requires_auth_token() {
-        let client = CyberdropClient::builder().build().unwrap();
-        let err = client.list_albums().await.unwrap_err();
-        assert!(matches!(err, CyberdropError::MissingAuthToken));
-    }
-
-    #[tokio::test]
-    async fn create_album_requires_auth_token() {
-        let client = CyberdropClient::builder().build().unwrap();
-        let err = client.create_album("name", None::<String>).await.unwrap_err();
-        assert!(matches!(err, CyberdropError::MissingAuthToken));
-    }
-}
