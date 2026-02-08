@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::models::{
     AlbumFilesPage, AlbumFilesResponse, AlbumsResponse, CreateAlbumRequest, CreateAlbumResponse,
     EditAlbumRequest, EditAlbumResponse, LoginRequest, LoginResponse, UploadResponse,
-    VerifyTokenRequest, VerifyTokenResponse,
+    RegisterRequest, RegisterResponse, VerifyTokenRequest, VerifyTokenResponse,
 };
 use crate::transport::Transport;
 use crate::{
@@ -43,10 +43,6 @@ pub(crate) struct FinishChunksPayload {
     pub(crate) files: Vec<FinishFile>,
 }
 
-const CHUNK_SIZE: u64 = 95_000_000;
-const DEFAULT_BASE_URL: &str = "https://cyberdrop.cr/";
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
-
 /// Async HTTP client for a subset of Cyberdrop endpoints.
 ///
 /// Most higher-level methods map non-2xx responses to [`CyberdropError`]. For raw access where
@@ -65,6 +61,10 @@ pub struct CyberdropClientBuilder {
     auth_token: Option<AuthToken>,
     builder: ClientBuilder,
 }
+
+const CHUNK_SIZE: u64 = 95_000_000;
+const DEFAULT_BASE_URL: &str = "https://cyberdrop.cr/";
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl CyberdropClient {
     /// Build a client with a custom base URL.
@@ -149,6 +149,37 @@ impl CyberdropClient {
         let response: LoginResponse = self
             .transport
             .post_json("api/login", &payload, false)
+            .await?;
+
+        AuthToken::try_from(response)
+    }
+
+    /// Register a new account and retrieve a token.
+    ///
+    /// The returned token can be installed on a client via [`CyberdropClient::with_auth_token`]
+    /// or [`CyberdropClientBuilder::auth_token`].
+    ///
+    /// Note: the API returns HTTP 200 even for validation failures; this method converts
+    /// `{"success":false,...}` responses into [`CyberdropError::Api`].
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::Api`] if the API reports a validation failure (e.g. username taken)
+    /// - [`CyberdropError::MissingToken`] if the response body omits the token field on success
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
+    pub async fn register(
+        &self,
+        username: impl Into<String>,
+        password: impl Into<String>,
+    ) -> Result<AuthToken, CyberdropError> {
+        let payload = RegisterRequest {
+            username: username.into(),
+            password: password.into(),
+        };
+
+        let response: RegisterResponse = self
+            .transport
+            .post_json("api/register", &payload, false)
             .await?;
 
         AuthToken::try_from(response)

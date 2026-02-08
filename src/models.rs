@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::CyberdropError;
 
-/// Authentication token returned by [`crate::CyberdropClient::login`].
+/// Authentication token returned by [`crate::CyberdropClient::login`] and
+/// [`crate::CyberdropClient::register`].
 ///
 /// This type is `#[serde(transparent)]` and typically deserializes from a JSON string.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -214,6 +215,20 @@ pub(crate) struct LoginResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub(crate) struct RegisterRequest {
+    pub(crate) username: String,
+    pub(crate) password: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RegisterResponse {
+    pub(crate) success: Option<bool>,
+    pub(crate) token: Option<AuthToken>,
+    pub(crate) message: Option<String>,
+    pub(crate) description: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct VerifyTokenRequest {
     pub(crate) token: String,
 }
@@ -249,6 +264,23 @@ impl TryFrom<LoginResponse> for AuthToken {
 
     fn try_from(response: LoginResponse) -> Result<Self, Self::Error> {
         response.token.ok_or(CyberdropError::MissingToken)
+    }
+}
+
+impl TryFrom<RegisterResponse> for AuthToken {
+    type Error = CyberdropError;
+
+    fn try_from(body: RegisterResponse) -> Result<Self, Self::Error> {
+        if body.success.unwrap_or(false) {
+            return body.token.ok_or(CyberdropError::MissingToken);
+        }
+
+        let msg = body
+            .description
+            .or(body.message)
+            .unwrap_or_else(|| "registration failed".to_string());
+
+        Err(CyberdropError::Api(msg))
     }
 }
 

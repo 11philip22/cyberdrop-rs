@@ -62,7 +62,7 @@ println!("uploaded {} -> {}", uploaded.name, uploaded.url);
 - Models: `AuthToken`, `TokenVerification`, `Permissions`, `AlbumsList`, `Album`, `AlbumFilesPage`, `AlbumFile`, `UploadedFile`, `EditAlbumResult`
 
 Common entrypoints on `CyberdropClient`:
-- Auth: `login`, `verify_token`, `with_auth_token`
+- Auth: `register`, `login`, `verify_token`, `with_auth_token`
 - Albums: `list_albums`, `create_album`, `edit_album`, `request_new_album_link`
 - Album files: `list_album_files`
 - Uploads: `upload_file`
@@ -78,6 +78,7 @@ Environment variables used by most examples:
 Run:
 
 ```sh
+cargo run --example register -- <username> <password>
 cargo run --example login -- <username> <password>
 cargo run --example list_albums -- <username> <password>
 cargo run --example create_album -- <username> <password> "<name>" ["<description>"]

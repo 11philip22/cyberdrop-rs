@@ -25,7 +25,7 @@ pub enum CyberdropError {
     #[error("auth token required for this request")]
     MissingAuthToken,
     /// The login response did not include a token.
-    #[error("login response missing token")]
+    #[error("response missing token")]
     MissingToken,
     /// A required field was missing in an API response body.
     #[error("{0}")]
