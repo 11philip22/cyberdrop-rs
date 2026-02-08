@@ -2,18 +2,26 @@
 name = "cyberdrop-client"
 version = "0.1.0"
 edition = "2024"
-description = ""
+description = "Rust API client for Cyberdrop, with async support and typed models."
 license = "MIT"
-repository = ""
-documentation = ""
-homepage = ""
+repository = "https://github.com/11philip22/cyberdrop-rs"
+documentation = "https://docs.rs/cyberdrop-client"
+homepage = "https://cyberdrop.cr"
 
 keywords = [
-
+  "cyberdrop",
+  "api",
+  "client",
+  "async",
+  "upload",
 ]
 
 categories = [
-
+  "api-bindings",
+  "asynchronous",
+  "network-programming",
+  "web-programming",
+  "web-programming::http-client",
 ]
 
 [dependencies]
