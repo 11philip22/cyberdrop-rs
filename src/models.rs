@@ -118,6 +118,36 @@ pub struct UploadResponse {
     pub files: Option<Vec<UploadedFile>>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct EditAlbumRequest {
+    pub(crate) id: u64,
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) download: bool,
+    pub(crate) public: bool,
+    #[serde(rename = "requestLink")]
+    pub(crate) request_link: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct EditAlbumResponse {
+    pub(crate) success: Option<bool>,
+    pub(crate) name: Option<String>,
+    pub(crate) identifier: Option<String>,
+    pub(crate) message: Option<String>,
+    pub(crate) description: Option<String>,
+}
+
+/// Result of editing an album via [`crate::CyberdropClient::edit_album`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EditAlbumResult {
+    /// Updated name if the API returned it.
+    pub name: Option<String>,
+    /// New identifier if `request_new_link` was set and the API returned it.
+    pub identifier: Option<String>,
+}
+
 /// Uploaded file metadata returned by [`crate::CyberdropClient::upload_file`].
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct UploadedFile {
@@ -258,5 +288,30 @@ impl TryFrom<UploadResponse> for UploadedFile {
                 .unwrap_or_else(|| "upload failed".to_string());
             Err(CyberdropError::Api(msg))
         }
+    }
+}
+
+impl TryFrom<EditAlbumResponse> for EditAlbumResult {
+    type Error = CyberdropError;
+
+    fn try_from(body: EditAlbumResponse) -> Result<Self, Self::Error> {
+        if !body.success.unwrap_or(false) {
+            let msg = body
+                .description
+                .or(body.message)
+                .unwrap_or_else(|| "edit album failed".to_string());
+            return Err(CyberdropError::Api(msg));
+        }
+
+        if body.name.is_none() && body.identifier.is_none() {
+            return Err(CyberdropError::MissingField(
+                "edit album response missing name/identifier",
+            ));
+        }
+
+        Ok(EditAlbumResult {
+            name: body.name,
+            identifier: body.identifier,
+        })
     }
 }

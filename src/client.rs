@@ -5,11 +5,11 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::models::{
-    AlbumsResponse, CreateAlbumRequest, CreateAlbumResponse, LoginRequest, LoginResponse,
-    UploadResponse, VerifyTokenRequest, VerifyTokenResponse,
+    AlbumsResponse, CreateAlbumRequest, CreateAlbumResponse, EditAlbumRequest, EditAlbumResponse,
+    LoginRequest, LoginResponse, UploadResponse, VerifyTokenRequest, VerifyTokenResponse,
 };
 use crate::transport::Transport;
-use crate::{AuthToken, AlbumsList, CyberdropError, TokenVerification, UploadedFile};
+use crate::{AuthToken, AlbumsList, CyberdropError, EditAlbumResult, TokenVerification, UploadedFile};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkFields {
@@ -192,6 +192,51 @@ impl CyberdropClient {
         let response: CreateAlbumResponse = self.transport.post_json("api/albums", &payload, true).await?;
 
         u64::try_from(response)
+    }
+
+    /// Edit an existing album ("folder").
+    ///
+    /// This endpoint updates album metadata such as name/description and visibility flags.
+    /// It can also request a new link identifier.
+    ///
+    /// Requires an auth token.
+    ///
+    /// # Returns
+    ///
+    /// The API returns either a `name` (typical edits) or an `identifier` (when requesting a new
+    /// link). This crate exposes both as optional fields on [`EditAlbumResult`].
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] for service-reported failures
+    /// - [`CyberdropError::MissingField`] if the response is missing expected fields
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
+    pub async fn edit_album(
+        &self,
+        id: u64,
+        name: impl Into<String>,
+        description: impl Into<String>,
+        download: bool,
+        public: bool,
+        request_new_link: bool,
+    ) -> Result<EditAlbumResult, CyberdropError> {
+        let payload = EditAlbumRequest {
+            id,
+            name: name.into(),
+            description: description.into(),
+            download,
+            public,
+            request_link: request_new_link,
+        };
+
+        let response: EditAlbumResponse = self
+            .transport
+            .post_json("api/albums/edit", &payload, true)
+            .await?;
+
+        EditAlbumResult::try_from(response)
     }
 
     /// Upload a single file.

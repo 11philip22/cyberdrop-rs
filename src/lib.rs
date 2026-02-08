@@ -88,5 +88,5 @@ mod client;
 
 pub use client::{CyberdropClient, CyberdropClientBuilder};
 pub use error::CyberdropError;
-pub use models::{Album, AlbumsList, AuthToken, Permissions, TokenVerification, UploadedFile};
+pub use models::{Album, AlbumsList, AuthToken, EditAlbumResult, Permissions, TokenVerification, UploadedFile};
 pub(crate) use client::ChunkFields;
