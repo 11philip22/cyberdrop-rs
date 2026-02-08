@@ -90,5 +90,6 @@ pub(crate) use client::ChunkFields;
 pub use client::{CyberdropClient, CyberdropClientBuilder};
 pub use error::CyberdropError;
 pub use models::{
-    Album, AlbumsList, AuthToken, EditAlbumResult, Permissions, TokenVerification, UploadedFile,
+    Album, AlbumFile, AlbumFilesPage, AlbumsList, AuthToken, EditAlbumResult, Permissions,
+    TokenVerification, UploadedFile,
 };

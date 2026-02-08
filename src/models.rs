@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
@@ -98,6 +100,47 @@ pub struct AlbumsList {
     pub home_domain: Option<Url>,
 }
 
+/// File metadata as returned by the album listing endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct AlbumFile {
+    pub id: u64,
+    pub name: String,
+    #[serde(rename = "userid")]
+    pub user_id: String,
+    pub size: u64,
+    pub timestamp: u64,
+    #[serde(rename = "last_visited_at")]
+    pub last_visited_at: Option<String>,
+    pub slug: String,
+    /// Base domain for file media (for example, `https://sun-i.cyberdrop.cr`).
+    pub image: String,
+    /// Nullable expiry date as returned by the service.
+    pub expirydate: Option<String>,
+    #[serde(rename = "albumid")]
+    pub album_id: String,
+    pub extname: String,
+    /// Thumbnail path relative to `image` (for example, `thumbs/<...>.png`).
+    pub thumb: String,
+}
+
+/// Page of files returned by the album listing endpoint.
+///
+/// This type represents a single response page; the API currently returns at most 25 files per
+/// request and provides a total `count` for pagination.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlbumFilesPage {
+    /// Whether the API request was successful.
+    pub success: bool,
+    /// Files returned for the requested page.
+    pub files: Vec<AlbumFile>,
+    /// Total number of files in the album (across all pages).
+    pub count: u64,
+    /// Album mapping returned by the service (keyed by album id as a string).
+    pub albums: HashMap<String, String>,
+    /// Base domain returned by the service (parsed as a URL).
+    pub base_domain: Url,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAlbumRequest {
@@ -190,6 +233,17 @@ pub(crate) struct AlbumsResponse {
     pub(crate) home_domain: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct AlbumFilesResponse {
+    pub(crate) success: Option<bool>,
+    pub(crate) files: Option<Vec<AlbumFile>>,
+    pub(crate) count: Option<u64>,
+    pub(crate) albums: Option<HashMap<String, String>>,
+    pub(crate) basedomain: Option<String>,
+    pub(crate) message: Option<String>,
+    pub(crate) description: Option<String>,
+}
+
 impl TryFrom<LoginResponse> for AuthToken {
     type Error = CyberdropError;
 
@@ -241,6 +295,43 @@ impl TryFrom<AlbumsResponse> for AlbumsList {
             success: true,
             albums,
             home_domain,
+        })
+    }
+}
+
+impl TryFrom<AlbumFilesResponse> for AlbumFilesPage {
+    type Error = CyberdropError;
+
+    fn try_from(body: AlbumFilesResponse) -> Result<Self, Self::Error> {
+        if !body.success.unwrap_or(false) {
+            let msg = body
+                .description
+                .or(body.message)
+                .unwrap_or_else(|| "failed to fetch album files".to_string());
+            return Err(CyberdropError::Api(msg));
+        }
+
+        let files = body.files.ok_or(CyberdropError::MissingField(
+            "album files response missing files",
+        ))?;
+
+        let count = body.count.ok_or(CyberdropError::MissingField(
+            "album files response missing count",
+        ))?;
+
+        let base_domain = body
+            .basedomain
+            .ok_or(CyberdropError::MissingField(
+                "album files response missing basedomain",
+            ))
+            .and_then(|url| Ok(Url::parse(&url)?))?;
+
+        Ok(AlbumFilesPage {
+            success: true,
+            files,
+            count,
+            albums: body.albums.unwrap_or_default(),
+            base_domain,
         })
     }
 }

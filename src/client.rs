@@ -5,8 +5,9 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use crate::models::{
-    AlbumsResponse, CreateAlbumRequest, CreateAlbumResponse, EditAlbumRequest, EditAlbumResponse,
-    LoginRequest, LoginResponse, UploadResponse, VerifyTokenRequest, VerifyTokenResponse,
+    AlbumFilesPage, AlbumFilesResponse, AlbumsResponse, CreateAlbumRequest, CreateAlbumResponse,
+    EditAlbumRequest, EditAlbumResponse, LoginRequest, LoginResponse, UploadResponse,
+    VerifyTokenRequest, VerifyTokenResponse,
 };
 use crate::transport::Transport;
 use crate::{
@@ -182,6 +183,48 @@ impl CyberdropClient {
     pub async fn list_albums(&self) -> Result<AlbumsList, CyberdropError> {
         let response: AlbumsResponse = self.transport.get_json("api/albums", true).await?;
         AlbumsList::try_from(response)
+    }
+
+    /// List files in an album ("folder").
+    ///
+    /// This method fetches the first response page (`page = 0`). The API currently returns at
+    /// most 25 files per request and includes the total file count for pagination.
+    ///
+    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] for service-reported failures
+    /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
+    pub async fn list_album_files(&self, album_id: u64) -> Result<AlbumFilesPage, CyberdropError> {
+        self.list_album_files_page(album_id, 0).await
+    }
+
+    /// List files in an album ("folder") for a specific page.
+    ///
+    /// Page numbers are zero-based (`page = 0` is the first page). This is intentionally exposed
+    /// so a higher-level pagination helper can be added later.
+    ///
+    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
+    ///
+    /// # Errors
+    ///
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] for service-reported failures
+    /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
+    pub async fn list_album_files_page(
+        &self,
+        album_id: u64,
+        page: u64,
+    ) -> Result<AlbumFilesPage, CyberdropError> {
+        let path = format!("api/album/{album_id}/{page}");
+        let response: AlbumFilesResponse = self.transport.get_json(&path, true).await?;
+        AlbumFilesPage::try_from(response)
     }
 
     /// Create a new album and return its numeric ID.
