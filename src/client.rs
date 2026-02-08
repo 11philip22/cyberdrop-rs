@@ -185,22 +185,80 @@ impl CyberdropClient {
         AlbumsList::try_from(response)
     }
 
-    /// List files in an album ("folder").
+    /// List all files in an album ("folder") by iterating pages until exhaustion.
     ///
-    /// This method fetches the first response page (`page = 0`). The API currently returns at
-    /// most 25 files per request and includes the total file count for pagination.
+    /// This calls [`CyberdropClient::list_album_files_page`] repeatedly starting at `page = 0` and
+    /// stops when:
+    /// - enough files have been collected to satisfy the API-reported `count`, or
+    /// - a page returns zero files, or
+    /// - a page yields no new file IDs (defensive infinite-loop guard).
     ///
     /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
     ///
+    /// # Returns
+    ///
+    /// An [`AlbumFilesPage`] containing all collected files. The returned `count` is the total
+    /// file count as reported by the API.
+    ///
     /// # Errors
     ///
-    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
-    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
-    /// - [`CyberdropError::Api`] for service-reported failures
-    /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
-    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
-    pub async fn list_album_files(&self, album_id: u64) -> Result<AlbumFilesPage, CyberdropError> {
-        self.list_album_files_page(album_id, 0).await
+    /// Any error returned by [`CyberdropClient::list_album_files_page`].
+    pub async fn list_album_files(
+        &self,
+        album_id: u64,
+    ) -> Result<AlbumFilesPage, CyberdropError> {
+        let mut page = 0u64;
+        let mut all_files = Vec::new();
+        let mut total_count = None::<u64>;
+        let mut albums = std::collections::HashMap::new();
+        let mut base_domain = None::<Url>;
+        let mut seen = std::collections::HashSet::<u64>::new();
+
+        loop {
+            let res = self.list_album_files_page(album_id, page).await?;
+
+            if base_domain.is_none() {
+                base_domain = Some(res.base_domain.clone());
+            }
+            if total_count.is_none() {
+                total_count = Some(res.count);
+            }
+            albums.extend(res.albums.into_iter());
+
+            if res.files.is_empty() {
+                break;
+            }
+
+            let mut added = 0usize;
+            for file in res.files.into_iter() {
+                if seen.insert(file.id) {
+                    all_files.push(file);
+                    added += 1;
+                }
+            }
+
+            if added == 0 {
+                break;
+            }
+
+            if let Some(total) = total_count {
+                if all_files.len() as u64 >= total {
+                    break;
+                }
+            }
+
+            page += 1;
+        }
+
+        Ok(AlbumFilesPage {
+            success: true,
+            files: all_files,
+            count: total_count.unwrap_or(0),
+            albums,
+            base_domain: base_domain.ok_or(CyberdropError::MissingField(
+                "album files response missing basedomain",
+            ))?,
+        })
     }
 
     /// List files in an album ("folder") for a specific page.

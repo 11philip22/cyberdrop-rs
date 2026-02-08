@@ -26,21 +26,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token = client.login(username, password).await?;
     let client = client.with_auth_token(token.into_string());
 
-    let page = client.list_album_files(album_id).await?;
+    let album_files = client.list_album_files(album_id).await?;
     println!(
-        "Album {album_id}: returned {} files (total count: {})",
-        page.files.len(),
-        page.count
+        "Album {album_id}: {} files (reported count: {})",
+        album_files.files.len(),
+        album_files.count
     );
 
-    for file in page.files.iter() {
+    for file in album_files.files.iter() {
         println!(
             "- {} (id: {}, size: {}, slug: {})",
             file.name, file.id, file.size, file.slug
         );
     }
 
-    println!("Base domain: {}", page.base_domain);
+    println!("Base domain: {}", album_files.base_domain);
 
     Ok(())
 }
