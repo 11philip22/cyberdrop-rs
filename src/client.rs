@@ -259,7 +259,7 @@ impl CyberdropClient {
     ///
     /// # Returns
     ///
-    /// The new album identifier string as returned by the API.
+    /// The new album public URL in the form `https://cyberdrop.cr/a/<identifier>`.
     ///
     /// # Errors
     ///
@@ -285,9 +285,12 @@ impl CyberdropClient {
             )
             .await?;
 
-        edited.identifier.ok_or(CyberdropError::MissingField(
+        let identifier = edited.identifier.ok_or(CyberdropError::MissingField(
             "edit album response missing identifier",
-        ))
+        ))?;
+
+        let identifier = identifier.trim_start_matches('/');
+        Ok(format!("https://cyberdrop.cr/a/{identifier}"))
     }
 
     /// Upload a single file.

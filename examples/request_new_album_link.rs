@@ -28,8 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let token = client.login(username, password).await?;
     let client = client.with_auth_token(token.into_string());
 
-    let identifier = client.request_new_album_link(album_id).await?;
-    println!("Requested new link for album {album_id}; new identifier: {identifier}");
+    let url = client.request_new_album_link(album_id).await?;
+    println!("Requested new link for album {album_id}; url: {url}");
 
     Ok(())
 }
