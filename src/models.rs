@@ -205,6 +205,14 @@ pub struct UploadedFile {
     pub url: String,
 }
 
+/// Upload progress information emitted during file uploads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadProgress {
+    pub file_name: String,
+    pub bytes_sent: u64,
+    pub total_bytes: u64,
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct LoginRequest {
     pub(crate) username: String,

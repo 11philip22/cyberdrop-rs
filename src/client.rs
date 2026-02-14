@@ -1,13 +1,21 @@
 use std::{path::Path, time::Duration};
 
-use reqwest::{Client, ClientBuilder, Url, multipart::Form};
+use bytes::Bytes;
+use futures_core::Stream;
+use reqwest::{Body, Client, ClientBuilder, Url, multipart::Form};
 use serde::Serialize;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
+use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 
 use crate::models::{
     AlbumFilesPage, AlbumFilesResponse, AlbumsResponse, CreateAlbumRequest, CreateAlbumResponse,
-    EditAlbumRequest, EditAlbumResponse, LoginRequest, LoginResponse, UploadResponse,
-    NodeResponse, RegisterRequest, RegisterResponse, VerifyTokenRequest, VerifyTokenResponse,
+    EditAlbumRequest, EditAlbumResponse, LoginRequest, LoginResponse, NodeResponse,
+    RegisterRequest, RegisterResponse, UploadProgress, UploadResponse, VerifyTokenRequest,
+    VerifyTokenResponse,
 };
 use crate::transport::Transport;
 use crate::{
@@ -41,6 +49,61 @@ pub(crate) struct FinishFile {
 #[derive(Debug, Serialize)]
 pub(crate) struct FinishChunksPayload {
     pub(crate) files: Vec<FinishFile>,
+}
+
+struct ProgressStream<S, F> {
+    inner: S,
+    bytes_sent: u64,
+    total_bytes: u64,
+    file_name: String,
+    callback: F,
+}
+
+impl<S, F> ProgressStream<S, F>
+where
+    S: Stream<Item = Result<Bytes, std::io::Error>> + Unpin,
+    F: FnMut(UploadProgress) + Send,
+{
+    fn new(inner: S, total_bytes: u64, file_name: String, callback: F) -> Self {
+        Self {
+            inner,
+            bytes_sent: 0,
+            total_bytes,
+            file_name,
+            callback,
+        }
+    }
+}
+
+impl<S, F> Stream for ProgressStream<S, F>
+where
+    S: Stream<Item = Result<Bytes, std::io::Error>> + Unpin,
+    F: FnMut(UploadProgress) + Send,
+{
+    type Item = Result<Bytes, std::io::Error>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        match Pin::new(&mut this.inner).poll_next(cx) {
+            Poll::Ready(Some(Ok(bytes))) => {
+                this.bytes_sent = this.bytes_sent.saturating_add(bytes.len() as u64);
+                (this.callback)(UploadProgress {
+                    file_name: this.file_name.clone(),
+                    bytes_sent: this.bytes_sent,
+                    total_bytes: this.total_bytes,
+                });
+                Poll::Ready(Some(Ok(bytes)))
+            }
+            other => other,
+        }
+    }
+}
+
+impl<S, F> Unpin for ProgressStream<S, F>
+where
+    S: Stream<Item = Result<Bytes, std::io::Error>> + Unpin,
+    F: FnMut(UploadProgress) + Send,
+{
 }
 
 /// Async HTTP client for a subset of Cyberdrop endpoints.
@@ -225,9 +288,9 @@ impl CyberdropClient {
             return Err(CyberdropError::Api(msg));
         }
 
-        let url = response.url.ok_or(CyberdropError::MissingField(
-            "node response missing url",
-        ))?;
+        let url = response
+            .url
+            .ok_or(CyberdropError::MissingField("node response missing url"))?;
 
         Ok(Url::parse(&url)?)
     }
@@ -265,10 +328,7 @@ impl CyberdropClient {
     /// # Errors
     ///
     /// Any error returned by [`CyberdropClient::list_album_files_page`].
-    pub async fn list_album_files(
-        &self,
-        album_id: u64,
-    ) -> Result<AlbumFilesPage, CyberdropError> {
+    pub async fn list_album_files(&self, album_id: u64) -> Result<AlbumFilesPage, CyberdropError> {
         let mut page = 0u64;
         let mut all_files = Vec::new();
         let mut total_count = None::<u64>;
@@ -619,7 +679,8 @@ impl CyberdropClient {
     /// Requires an auth token.
     ///
     /// Implementation notes:
-    /// - The file is currently read fully into memory before uploading.
+    /// - Small files are streamed.
+    /// - Large files are uploaded in chunks from disk.
     /// - Files larger than `95_000_000` bytes are uploaded in chunks.
     /// - If `album_id` is provided, it is sent as an `albumid` header on the chunk/single-upload
     ///   requests and included in the `finishchunks` payload.
@@ -638,6 +699,22 @@ impl CyberdropClient {
         file_path: impl AsRef<Path>,
         album_id: Option<u64>,
     ) -> Result<UploadedFile, CyberdropError> {
+        self.upload_file_with_progress(file_path, album_id, |_| {})
+            .await
+    }
+
+    /// Upload a single file and emit per-file progress updates.
+    ///
+    /// The `on_progress` callback is invoked as bytes are streamed or as chunks complete.
+    pub async fn upload_file_with_progress<F>(
+        &self,
+        file_path: impl AsRef<Path>,
+        album_id: Option<u64>,
+        mut on_progress: F,
+    ) -> Result<UploadedFile, CyberdropError>
+    where
+        F: FnMut(UploadProgress) + Send + 'static,
+    {
         let file_path = file_path.as_ref();
         let file_name = file_path
             .file_name()
@@ -650,13 +727,18 @@ impl CyberdropClient {
             .unwrap_or("application/octet-stream")
             .to_string();
 
-        let data = std::fs::read(file_path)?;
-        let total_size = data.len() as u64;
+        let file = File::open(file_path).await?;
+        let total_size = file.metadata().await?.len();
         let upload_url = self.get_upload_url().await?;
 
         // For small files, use the simple single-upload endpoint.
         if total_size <= CHUNK_SIZE {
-            let part = reqwest::multipart::Part::bytes(data).file_name(file_name.clone());
+            let stream = ReaderStream::new(file);
+            let progress_stream =
+                ProgressStream::new(stream, total_size, file_name.clone(), on_progress);
+            let body = Body::wrap_stream(progress_stream);
+            let part = reqwest::multipart::Part::stream_with_length(body, total_size)
+                .file_name(file_name.clone());
             let part = match part.mime_str(&mime) {
                 Ok(p) => p,
                 Err(_) => reqwest::multipart::Part::bytes(Vec::new()).file_name(file_name.clone()),
@@ -672,16 +754,24 @@ impl CyberdropClient {
         let chunk_size = CHUNK_SIZE.min(total_size.max(1));
         let total_chunks = ((total_size + chunk_size - 1) / chunk_size).max(1);
         let uuid = Uuid::new_v4().to_string();
+        let mut file = file;
+        let mut bytes_sent = 0u64;
+        let mut chunk_index = 0u64;
 
-        for (index, chunk) in data.chunks(chunk_size as usize).enumerate() {
-            let chunk_index = index as u64;
+        loop {
+            let mut buffer = vec![0u8; chunk_size as usize];
+            let read = file.read(&mut buffer).await?;
+            if read == 0 {
+                break;
+            }
+            buffer.truncate(read);
             let byte_offset = chunk_index * chunk_size;
 
             let response: serde_json::Value = self
                 .transport
                 .post_chunk_url(
                     upload_url.clone(),
-                    chunk.to_vec(),
+                    buffer,
                     ChunkFields {
                         uuid: uuid.clone(),
                         chunk_index,
@@ -703,6 +793,14 @@ impl CyberdropClient {
             {
                 return Err(CyberdropError::Api(format!("chunk {} failed", chunk_index)));
             }
+
+            bytes_sent = bytes_sent.saturating_add(read as u64);
+            on_progress(UploadProgress {
+                file_name: file_name.clone(),
+                bytes_sent,
+                total_bytes: total_size,
+            });
+            chunk_index = chunk_index.saturating_add(1);
         }
 
         let payload = FinishChunksPayload {
@@ -730,7 +828,6 @@ impl CyberdropClient {
         UploadedFile::try_from(response)
     }
 }
-
 
 impl CyberdropClientBuilder {
     /// Create a new builder using the crate defaults.

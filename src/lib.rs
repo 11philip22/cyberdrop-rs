@@ -37,8 +37,7 @@
 //! # }
 //! ```
 //!
-//! Note: the current `upload_file` implementation reads the entire file into memory before
-//! uploading.
+//! Note: `upload_file` streams smaller files and reads larger files in chunks.
 //!
 //! ## Authentication
 //!
@@ -91,5 +90,5 @@ pub use client::{CyberdropClient, CyberdropClientBuilder};
 pub use error::CyberdropError;
 pub use models::{
     Album, AlbumFile, AlbumFilesPage, AlbumsList, AuthToken, EditAlbumResult, Permissions,
-    TokenVerification, UploadedFile,
+    TokenVerification, UploadProgress, UploadedFile,
 };
