@@ -230,6 +230,14 @@ pub(crate) struct RegisterResponse {
     pub(crate) description: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct NodeResponse {
+    pub(crate) success: Option<bool>,
+    pub(crate) url: Option<String>,
+    pub(crate) message: Option<String>,
+    pub(crate) description: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub(crate) struct VerifyTokenRequest {
     pub(crate) token: String,

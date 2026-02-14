@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::models::{
     AlbumFilesPage, AlbumFilesResponse, AlbumsResponse, CreateAlbumRequest, CreateAlbumResponse,
     EditAlbumRequest, EditAlbumResponse, LoginRequest, LoginResponse, UploadResponse,
-    RegisterRequest, RegisterResponse, VerifyTokenRequest, VerifyTokenResponse,
+    NodeResponse, RegisterRequest, RegisterResponse, VerifyTokenRequest, VerifyTokenResponse,
 };
 use crate::transport::Transport;
 use crate::{
@@ -209,6 +209,27 @@ impl CyberdropClient {
             .await?;
 
         TokenVerification::try_from(response)
+    }
+
+    /// Fetch the upload node URL for the authenticated user.
+    ///
+    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
+    pub async fn get_upload_url(&self) -> Result<Url, CyberdropError> {
+        let response: NodeResponse = self.transport.get_json("api/node", true).await?;
+
+        if !response.success.unwrap_or(false) {
+            let msg = response
+                .description
+                .or(response.message)
+                .unwrap_or_else(|| "failed to fetch upload node".to_string());
+            return Err(CyberdropError::Api(msg));
+        }
+
+        let url = response.url.ok_or(CyberdropError::MissingField(
+            "node response missing url",
+        ))?;
+
+        Ok(Url::parse(&url)?)
     }
 
     /// List albums for the authenticated user.
@@ -631,6 +652,7 @@ impl CyberdropClient {
 
         let data = std::fs::read(file_path)?;
         let total_size = data.len() as u64;
+        let upload_url = self.get_upload_url().await?;
 
         // For small files, use the simple single-upload endpoint.
         if total_size <= CHUNK_SIZE {
@@ -642,7 +664,7 @@ impl CyberdropClient {
             let form = Form::new().part("files[]", part);
             let response: UploadResponse = self
                 .transport
-                .post_single_upload("api/upload", form, album_id)
+                .post_single_upload_url(upload_url, form, album_id)
                 .await?;
             return UploadedFile::try_from(response);
         }
@@ -657,8 +679,8 @@ impl CyberdropClient {
 
             let response: serde_json::Value = self
                 .transport
-                .post_chunk(
-                    "api/upload",
+                .post_chunk_url(
+                    upload_url.clone(),
                     chunk.to_vec(),
                     ChunkFields {
                         uuid: uuid.clone(),
@@ -694,9 +716,15 @@ impl CyberdropClient {
             }],
         };
 
+        let finish_url = {
+            let mut url = upload_url;
+            url.set_path("/api/upload/finishchunks");
+            url
+        };
+
         let response: UploadResponse = self
             .transport
-            .post_json_with_upload_headers("api/upload/finishchunks", &payload)
+            .post_json_with_upload_headers_url(finish_url, &payload)
             .await?;
 
         UploadedFile::try_from(response)

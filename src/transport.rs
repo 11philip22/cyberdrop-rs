@@ -69,16 +69,16 @@ impl Transport {
         self.send_json(builder).await
     }
 
-    pub(crate) async fn post_chunk<T>(
+    pub(crate) async fn post_chunk_url<T>(
         &self,
-        path: &str,
+        url: Url,
         data: Vec<u8>,
         fields: ChunkFields,
     ) -> Result<T, CyberdropError>
     where
         T: DeserializeOwned,
     {
-        let mut builder = self.build_request(Method::POST, path, true)?;
+        let mut builder = self.build_request_url(Method::POST, url, true)?;
         if let Some(id) = fields.album_id {
             builder = builder.header("albumid", id);
         }
@@ -109,9 +109,9 @@ impl Transport {
         self.send_json(builder).await
     }
 
-    pub(crate) async fn post_json_with_upload_headers<B, T>(
+    pub(crate) async fn post_json_with_upload_headers_url<B, T>(
         &self,
-        path: &str,
+        url: Url,
         body: &B,
     ) -> Result<T, CyberdropError>
     where
@@ -119,7 +119,7 @@ impl Transport {
         T: DeserializeOwned,
     {
         let builder = self
-            .build_request(Method::POST, path, true)?
+            .build_request_url(Method::POST, url, true)?
             .header("X-Requested-With", "XMLHttpRequest")
             .header("striptags", "undefined")
             .header("Origin", "https://cyberdrop.cr")
@@ -131,16 +131,16 @@ impl Transport {
         self.send_json(builder).await
     }
 
-    pub(crate) async fn post_single_upload<T>(
+    pub(crate) async fn post_single_upload_url<T>(
         &self,
-        path: &str,
+        url: Url,
         form: Form,
         album_id: Option<u64>,
     ) -> Result<T, CyberdropError>
     where
         T: DeserializeOwned,
     {
-        let mut builder = self.build_request(Method::POST, path, true)?;
+        let mut builder = self.build_request_url(Method::POST, url, true)?;
         if let Some(id) = album_id {
             builder = builder.header("albumid", id);
         }
@@ -172,6 +172,15 @@ impl Transport {
         requires_auth: bool,
     ) -> Result<RequestBuilder, CyberdropError> {
         let url = self.join_path(path)?;
+        self.build_request_url(method, url, requires_auth)
+    }
+
+    fn build_request_url(
+        &self,
+        method: Method,
+        url: Url,
+        requires_auth: bool,
+    ) -> Result<RequestBuilder, CyberdropError> {
         let builder = self
             .client
             .request(method, url)
