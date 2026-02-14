@@ -5,9 +5,12 @@ fn take_arg_or_env(
     env_key: &str,
     arg_name: &str,
 ) -> String {
+    if let Ok(value) = std::env::var(env_key) {
+        return value;
+    }
+
     args.next()
-        .or_else(|| std::env::var(env_key).ok())
-        .unwrap_or_else(|| panic!("provide {} as first arg or set {}", arg_name, env_key))
+        .unwrap_or_else(|| panic!("provide {} as arg or set {}", arg_name, env_key))
 }
 
 #[tokio::main]
@@ -22,4 +25,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Registration succeeded. Token: {}", token.as_str());
     Ok(())
 }
-

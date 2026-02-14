@@ -139,7 +139,9 @@ pub struct AlbumFilesPage {
     /// Album mapping returned by the service (keyed by album id as a string).
     pub albums: HashMap<String, String>,
     /// Base domain returned by the service (parsed as a URL).
-    pub base_domain: Url,
+    ///
+    /// Note: the API omits this field for empty albums, so it can be `None`.
+    pub base_domain: Option<Url>,
 }
 
 #[derive(Debug, Serialize)]
@@ -351,12 +353,17 @@ impl TryFrom<AlbumFilesResponse> for AlbumFilesPage {
             "album files response missing count",
         ))?;
 
-        let base_domain = body
-            .basedomain
-            .ok_or(CyberdropError::MissingField(
+        let base_domain = if files.is_empty() {
+            match body.basedomain {
+                Some(url) => Some(Url::parse(&url)?),
+                None => None,
+            }
+        } else {
+            let url = body.basedomain.ok_or(CyberdropError::MissingField(
                 "album files response missing basedomain",
-            ))
-            .and_then(|url| Ok(Url::parse(&url)?))?;
+            ))?;
+            Some(Url::parse(&url)?)
+        };
 
         Ok(AlbumFilesPage {
             success: true,

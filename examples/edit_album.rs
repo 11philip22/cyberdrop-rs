@@ -5,8 +5,11 @@ fn take_arg_or_env(
     env_key: &str,
     arg_name: &str,
 ) -> String {
+    if let Ok(value) = std::env::var(env_key) {
+        return value;
+    }
+
     args.next()
-        .or_else(|| std::env::var(env_key).ok())
         .unwrap_or_else(|| panic!("provide {} as arg or set {}", arg_name, env_key))
 }
 
@@ -23,7 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let album_id = args
         .next()
-        .expect("usage: cargo run --example edit_album -- <username> <password> <album_id> <name> <description> <download:true|false> <public:true|false> <request_new_link:true|false>")
+        .expect(
+            "usage: cargo run --example edit_album -- <username> <password> <album_id> <name> <description> <download:true|false> <public:true|false> <request_new_link:true|false>\n\
+or:    cargo run --example edit_album -- <album_id> <name> <description> <download:true|false> <public:true|false> <request_new_link:true|false> (with env vars)",
+        )
         .parse::<u64>()
         .expect("album_id must be a number");
 

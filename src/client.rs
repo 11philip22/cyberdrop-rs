@@ -259,7 +259,7 @@ impl CyberdropClient {
             let res = self.list_album_files_page(album_id, page).await?;
 
             if base_domain.is_none() {
-                base_domain = Some(res.base_domain.clone());
+                base_domain = res.base_domain.clone();
             }
             if total_count.is_none() {
                 total_count = Some(res.count);
@@ -296,9 +296,7 @@ impl CyberdropClient {
             files: all_files,
             count: total_count.unwrap_or(0),
             albums,
-            base_domain: base_domain.ok_or(CyberdropError::MissingField(
-                "album files response missing basedomain",
-            ))?,
+            base_domain,
         })
     }
 

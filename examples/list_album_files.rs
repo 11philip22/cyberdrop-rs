@@ -5,8 +5,11 @@ fn take_arg_or_env(
     env_key: &str,
     arg_name: &str,
 ) -> String {
+    if let Ok(value) = std::env::var(env_key) {
+        return value;
+    }
+
     args.next()
-        .or_else(|| std::env::var(env_key).ok())
         .unwrap_or_else(|| panic!("provide {} as arg or set {}", arg_name, env_key))
 }
 
@@ -18,7 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let album_id = args
         .next()
-        .expect("usage: cargo run --example list_album_files -- <username> <password> <album_id>")
+        .expect(
+            "usage: cargo run --example list_album_files -- <username> <password> <album_id>\n\
+or:    cargo run --example list_album_files -- <album_id> (with env vars)",
+        )
         .parse::<u64>()
         .expect("album_id must be a number");
 
@@ -39,8 +45,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             file.name, file.id, file.size, file.slug
         );
     }
-
-    println!("Base domain: {}", album_files.base_domain);
 
     Ok(())
 }

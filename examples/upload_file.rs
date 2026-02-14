@@ -6,8 +6,11 @@ fn take_arg_or_env(
     env_key: &str,
     arg_name: &str,
 ) -> String {
+    if let Ok(value) = std::env::var(env_key) {
+        return value;
+    }
+
     args.next()
-        .or_else(|| std::env::var(env_key).ok())
         .unwrap_or_else(|| panic!("provide {} as arg or set {}", arg_name, env_key))
 }
 
@@ -18,7 +21,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let password = take_arg_or_env(&mut args, "CYBERDROP_PASSWORD", "password");
 
     let file_path = args.next().expect(
-        "usage: cargo run --example upload_file -- <username> <password> <path> [album_id]",
+        "usage: cargo run --example upload_file -- <username> <password> <path> [album_id]\n\
+or:    cargo run --example upload_file -- <path> [album_id] (with env vars)",
     );
 
     let album_id = match args.next() {

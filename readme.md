@@ -36,24 +36,24 @@ Quickstart:
 use cyberdrop_client::CyberdropClient;
 use std::path::Path;
 
-# #[tokio::main]
-# async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
-let client = CyberdropClient::builder().build()?;
-let token = client.login("username", "password").await?;
+#[tokio::main]
+async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
+    let client = CyberdropClient::builder().build()?;
+    let token = client.login("username", "password").await?;
 
-let authed = client.with_auth_token(token.into_string());
-let albums = authed.list_albums().await?;
-println!("albums: {}", albums.albums.len());
+    let authed = client.with_auth_token(token.into_string());
+    let albums = authed.list_albums().await?;
+    println!("albums: {}", albums.albums.len());
 
-let album_id = authed
-    .create_album("my uploads", Some("created by cyberdrop-client"))
-    .await?;
-let uploaded = authed
-    .upload_file(Path::new("path/to/file.jpg"), Some(album_id))
-    .await?;
-println!("uploaded {} -> {}", uploaded.name, uploaded.url);
-# Ok(())
-# }
+    let album_id = authed
+        .create_album("my uploads", Some("created by cyberdrop-client"))
+        .await?;
+    let uploaded = authed
+        .upload_file(Path::new("path/to/file.jpg"), Some(album_id))
+        .await?;
+    println!("uploaded {} -> {}", uploaded.name, uploaded.url);
+    Ok(())
+}
 ```
 
 ## Public API
