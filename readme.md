@@ -13,7 +13,7 @@
        playsinline>
 </video>
 
-Rust API client for Cyberdrop, with async support and typed models. Works with both `cyberdrop.me` and `bunkr.cr` (same API).
+Rust API client for Cyberdrop, with async support and typed models. Works with both `cyberdrop.me` and `bunkr.cr`.
 
 ## Features
 - Async client built on `reqwest` (rustls TLS, no native OpenSSL requirement).

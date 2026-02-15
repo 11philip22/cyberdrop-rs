@@ -526,7 +526,7 @@ impl CyberdropClient {
         ))?;
 
         let identifier = identifier.trim_start_matches('/');
-        Ok(format!("https://cyberdrop.cr/a/{identifier}"))
+        Ok(identifier.to_string())
     }
 
     /// Update an album name, preserving existing description and visibility flags.

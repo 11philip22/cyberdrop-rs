@@ -32,7 +32,8 @@ or:    cargo run --example request_new_album_link -- <album_id> (with env vars)"
     let token = client.login(username, password).await?;
     let client = client.with_auth_token(token.into_string());
 
-    let url = client.request_new_album_link(album_id).await?;
+    let code = client.request_new_album_link(album_id).await?;
+    let url = format!("https://cyberdrop.me/a/{code}");
     println!("Requested new link for album {album_id}; url: {url}");
 
     Ok(())
