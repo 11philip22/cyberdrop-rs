@@ -166,7 +166,7 @@ impl CyberdropClient {
         self
     }
 
-    async fn get_album_by_id(&self, album_id: u64) -> Result<crate::models::Album, CyberdropError> {
+    pub async fn get_album_by_id(&self, album_id: u64) -> Result<crate::models::Album, CyberdropError> {
         let albums = self.list_albums().await?;
         albums
             .albums
