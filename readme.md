@@ -13,7 +13,7 @@
        playsinline>
 </video>
 
-Rust API client for Cyberdrop, with async support and typed models.
+Rust API client for Cyberdrop, with async support and typed models. Works with both `cyberdrop.me` and `bunkr.cr` (same API).
 
 ## Features
 - Async client built on `reqwest` (rustls TLS, no native OpenSSL requirement).
@@ -54,6 +54,16 @@ async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
     println!("uploaded {} -> {}", uploaded.name, uploaded.url);
     Ok(())
 }
+```
+
+Example: Bunkr (`dash.bunkr.cr`)
+
+```rust
+let client = CyberdropClient::builder()
+    .base_url("https://dash.bunkr.cr")?
+    .auth_token("your_auth_token_here")
+    .timeout(std::time::Duration::from_secs(500))
+    .build()?;
 ```
 
 ## Public API
