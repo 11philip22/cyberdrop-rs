@@ -27,7 +27,7 @@ Add the crate:
 
 ```toml
 [dependencies]
-cyberdrop-client = "0.1"
+cyberdrop-client = "0.4.3"
 ```
 
 Quickstart:
