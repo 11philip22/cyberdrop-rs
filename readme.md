@@ -66,18 +66,6 @@ let client = CyberdropClient::builder()
     .build()?;
 ```
 
-## Public API
-- Client: `CyberdropClient`, `CyberdropClientBuilder`
-- Errors: `CyberdropError`
-- Models: `AuthToken`, `TokenVerification`, `Permissions`, `AlbumsList`, `Album`, `AlbumFilesPage`, `AlbumFile`, `UploadedFile`, `EditAlbumResult`
-
-Common entrypoints on `CyberdropClient`:
-- Auth: `register`, `login`, `verify_token`, `with_auth_token`
-- Albums: `list_albums`, `create_album`, `edit_album`, `request_new_album_link`
-- Album files: `list_album_files`
-- Uploads: `upload_file`
-- Low-level: `get` (returns raw `reqwest::Response` and does not treat non-2xx as errors)
-
 ## Running the CLI Examples
 Examples live in `examples/` and can take args or environment variables.
 
@@ -98,12 +86,19 @@ cargo run --example request_new_album_link -- <username> <password> <album_id>
 cargo run --example upload_file -- <username> <password> <path> [album_id]
 ```
 
+## Documentation
+
+For detailed API documentation, visit [docs.rs/cyberdrop-client](https://docs.rs/cyberdrop-client).
+
 ## Contributing
 
-PRs are welcome!  
-Please run `cargo fmt` and `cargo clippy` before submitting.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-If you’re changing behavior (e.g. stricter parsing), document it in the PR.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## Support
 
