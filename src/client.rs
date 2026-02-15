@@ -306,7 +306,10 @@ impl CyberdropClient {
     /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
     /// - [`CyberdropError::Http`] for transport failures (including timeouts)
     pub async fn list_albums(&self) -> Result<AlbumsList, CyberdropError> {
-        let response: AlbumsResponse = self.transport.get_json("api/albums", true).await?;
+        let response: AlbumsResponse = self
+            .transport
+            .get_json_with_header("api/albums", true, "Simple", "1")
+            .await?;
         AlbumsList::try_from(response)
     }
 

@@ -53,6 +53,22 @@ impl Transport {
         self.send_json(builder).await
     }
 
+    pub(crate) async fn get_json_with_header<T>(
+        &self,
+        path: &str,
+        requires_auth: bool,
+        header_name: &'static str,
+        header_value: &'static str,
+    ) -> Result<T, CyberdropError>
+    where
+        T: DeserializeOwned,
+    {
+        let builder = self
+            .build_request(Method::GET, path, requires_auth)?
+            .header(header_name, header_value);
+        self.send_json(builder).await
+    }
+
     pub(crate) async fn post_json<B, T>(
         &self,
         path: &str,

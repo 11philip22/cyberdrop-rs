@@ -72,18 +72,24 @@ pub struct Album {
     /// Display name.
     pub name: String,
     /// Service-provided timestamp value.
+    #[serde(default)]
     pub timestamp: u64,
     /// Service-provided identifier string.
     pub identifier: String,
     /// Service-provided "edited at" timestamp value.
+    #[serde(default)]
     pub edited_at: u64,
     /// Service-provided download flag.
+    #[serde(default)]
     pub download: bool,
     /// Service-provided public flag.
+    #[serde(default)]
     pub public: bool,
     /// Album description (may be empty).
+    #[serde(default)]
     pub description: String,
     /// Number of files in the album.
+    #[serde(default)]
     pub files: u64,
 }
 
