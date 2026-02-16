@@ -22,16 +22,16 @@ Rust API client for Cyberdrop, with async support and typed models. Works with b
 - Upload support via multipart, including chunked uploads for large files.
 - Configurable base URL, user-agent, and request timeout via `CyberdropClientBuilder`.
 
-## Usage as Library
-Add the crate:
+## Installation
 
 ```toml
 [dependencies]
-cyberdrop-client = "0.4.3"
+cyberdrop-client = "0.4.4"
 ```
 
-Quickstart:
+## Quick Start
 
+### Cyberdrop Example
 ```rust
 use cyberdrop_client::CyberdropClient;
 use std::path::Path;
@@ -56,7 +56,7 @@ async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
 }
 ```
 
-Example: Bunkr (`dash.bunkr.cr`)
+### Bunkr Example
 
 ```rust
 let client = CyberdropClient::builder()
