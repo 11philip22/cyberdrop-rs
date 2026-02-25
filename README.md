@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/cyberdrop-client-hero-banner.png" alt="cyberdrop-client hero pane" width="980">
+  <img src="assets/hero-banner.png" alt="hero pane" width="980">
 </p>
 
 <p align="center">
