@@ -15,16 +15,6 @@
 
 ---
 
-<!-- <video src="https://cyberdrop.cr/images/logo-v-200-opt.mp4"
-       width="300"
-       autoplay
-       muted
-       loop
-       playsinline>
-</video> -->
-
-A rust API client for Cyberdrop, with async support and typed models. Works with both `cyberdrop.cr` and `bunkr.cr`.
-
 ## Features
 - Login/register + token verification, with permissions in the response.
 - Full album management: list, create, edit metadata, toggle public/download, and rotate share links.
