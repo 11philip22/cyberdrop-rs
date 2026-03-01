@@ -1,6 +1,6 @@
 [package]
 name = "cyberdrop-client"
-version = "0.4.5"
+version = "0.4.6"
 edition = "2024"
 description = "Rust API client for Cyberdrop, with async support and typed models. Also works for bunkr.cr"
 license = "MIT"
