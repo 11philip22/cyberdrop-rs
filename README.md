@@ -6,34 +6,37 @@
   <a href="https://crates.io/crates/cyberdrop-client"><img src="https://img.shields.io/badge/crates.io-cyberdrop--client-F59E0B?style=for-the-badge&logo=rust&logoColor=white" alt="Crates.io"></a>
   <a href="https://docs.rs/cyberdrop-client"><img src="https://img.shields.io/badge/docs.rs-cyberdrop--client-3B82F6?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Documentation"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" alt="MIT License"></a>
-  <a href="https://github.com/woldp001/guerrillamail-client-rs/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22C55E?style=for-the-badge" alt="PRs Welcome"></a>
+  <a href="https://github.com/11philip22/cyberdrop-rs/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22C55E?style=for-the-badge" alt="PRs Welcome"></a>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> · <a href="#installation">Installation</a> · <a href="#quick-start">Quick Start</a> · <a href="#running-the-cli-examples">Running the CLI Examples</a> · <a href="#documentation">Documentation</a> · <a href="#contributing">Contributing</a> · <a href="#support">Support</a> · <a href="#license">License</a>
+  <a href="#features">Features</a> · <a href="#installation">Installation</a> · <a href="#quick-start">Quick Start</a> · <a href="#examples">Examples</a> · <a href="#documentation">Documentation</a>
 </p>
 
 ---
 
+An async Rust client for the [Cyberdrop](https://cyberdrop.cr) and [Bunkr](https://bunkr.cr) APIs, built on [reqwest](https://github.com/seanmonstar/reqwest).
+
 ## Features
-- Login/register + token verification, with permissions in the response.
-- Full album management: list, create, edit metadata, toggle public/download, and rotate share links.
-- Album file listing with built‑in pagination (single page or all pages).
-- Uploads with automatic upload‑node discovery, streaming small files and chunked uploads for large files, plus per‑file progress
-callbacks.
-- Typed models and explicit error types (auth failures, album‑not‑found, album‑exists, missing fields).
-- Optional low‑level get for endpoints not covered by higher‑level methods.
+
+- **Authentication** — Login, register, and token verification with permission flags.
+- **Album management** — List, create, edit metadata, toggle public/download, and rotate share links.
+- **File listing** — Album file listing with built-in pagination (single page or all pages).
+- **Uploads** — Automatic upload-node discovery, streaming for small files, chunked uploads for large files, and per-file progress callbacks.
+- **Typed models** — Explicit error types for auth failures, album-not-found, album-exists, and missing fields.
+- **Low-level access** — Optional raw `get` for endpoints not covered by higher-level methods.
 
 ## Installation
 
 ```toml
 [dependencies]
-cyberdrop-client = "0.4.5"
+cyberdrop-client = "0.4"
 ```
 
 ## Quick Start
 
-### Cyberdrop Example
+### Cyberdrop
+
 ```rust
 use cyberdrop_client::CyberdropClient;
 use std::path::Path;
@@ -58,7 +61,7 @@ async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
 }
 ```
 
-### Bunkr Example
+### Bunkr
 
 ```rust
 let client = CyberdropClient::builder()
@@ -68,14 +71,13 @@ let client = CyberdropClient::builder()
     .build()?;
 ```
 
-## Running the CLI Examples
-Examples live in `examples/` and can take args or environment variables.
+## Examples
+
+Examples live in `examples/` and accept args or environment variables.
 
 Environment variables used by most examples:
 - `CYBERDROP_USERNAME`
 - `CYBERDROP_PASSWORD`
-
-Run:
 
 ```sh
 cargo run --example register -- <username> <password>
@@ -92,22 +94,8 @@ cargo run --example upload_file -- <username> <password> <path> [album_id]
 
 For detailed API documentation, visit [docs.rs/cyberdrop-client](https://docs.rs/cyberdrop-client).
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
 ## Support
 
 If this crate saves you time or helps your work, support is appreciated:
 
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/11philip22)
-
-## License
-
-This project is licensed under the MIT License; see the [license](https://opensource.org/licenses/MIT) for details.
