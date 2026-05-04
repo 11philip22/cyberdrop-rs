@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Upload `Origin` and `Referer` headers are now derived from the configured base URL instead of being hardcoded to `cyberdrop.cr`, fixing uploads against non-default hosts like Bunkr.
+- Wrapped bare `matches!` calls in `assert!` in transport tests so they actually verify error variants.
+- Chunked uploads now reuse a buffer via `Vec::with_capacity` and `read_buf` instead of allocating and zero-filling a new buffer per chunk, reducing allocator churn during large-file uploads.
 
 ## [0.4.6] - 2026-05-04
 

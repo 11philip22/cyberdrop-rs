@@ -904,14 +904,14 @@ impl CyberdropClient {
         let uuid = Uuid::new_v4().to_string();
         let mut bytes_sent = 0u64;
         let mut chunk_index = 0u64;
+        let mut buffer = Vec::with_capacity(plan.chunk_size as usize);
 
         loop {
-            let mut buffer = vec![0u8; plan.chunk_size as usize];
-            let read = file.read(&mut buffer).await?;
+            buffer.clear();
+            let read = file.read_buf(&mut buffer).await?;
             if read == 0 {
                 break;
             }
-            buffer.truncate(read);
 
             let response: serde_json::Value = self
                 .transport
@@ -945,6 +945,7 @@ impl CyberdropClient {
                 total_bytes: total_size,
             });
             chunk_index = chunk_index.saturating_add(1);
+            buffer = Vec::with_capacity(plan.chunk_size as usize);
         }
 
         self.finish_chunked_upload(upload_url, uuid, file_name, mime, album_id)
