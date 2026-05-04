@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use reqwest::Url;
-use serde::{Deserialize, Serialize};
 use serde::de::{self, Visitor};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::CyberdropError;

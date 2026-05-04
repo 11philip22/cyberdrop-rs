@@ -243,9 +243,7 @@ impl Transport {
     }
 
     fn attach_token(builder: RequestBuilder, token: &AuthToken) -> RequestBuilder {
-        let builder = builder.header(HeaderName::from_static("token"), token.as_str());
-
-        builder
+        builder.header(HeaderName::from_static("token"), token.as_str())
     }
 }
 
