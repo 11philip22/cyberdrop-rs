@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Split `upload_file_with_progress` into focused helpers for file preparation, single-file uploads, chunked uploads, and finish-chunks finalization to make upload behavior easier to review and maintain.
 - Added a `Default` implementation for `CyberdropClientBuilder` and cleaned up minor clippy-reported code patterns.
 
+### Fixed
+- Upload `Origin` and `Referer` headers are now derived from the configured base URL instead of being hardcoded to `cyberdrop.cr`, fixing uploads against non-default hosts like Bunkr.
+
 ## [0.4.6] - 2026-05-04
 
 ### Added

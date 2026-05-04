@@ -94,17 +94,10 @@ impl Transport {
     where
         T: DeserializeOwned,
     {
-        let mut builder = self.build_request_url(Method::POST, url, true)?;
+        let mut builder = self.upload_headers(self.build_request_url(Method::POST, url, true)?);
         if let Some(id) = fields.album_id {
             builder = builder.header("albumid", id);
         }
-        builder = builder
-            .header("X-Requested-With", "XMLHttpRequest")
-            .header("striptags", "undefined")
-            .header("Origin", "https://cyberdrop.cr")
-            .header("Referer", "https://cyberdrop.cr/")
-            .header("Cache-Control", "no-cache")
-            .header("Pragma", "no-cache");
 
         let part = Part::bytes(data).file_name(fields.file_name.clone());
         let part = match part.mime_str(&fields.mime_type) {
@@ -135,13 +128,7 @@ impl Transport {
         T: DeserializeOwned,
     {
         let builder = self
-            .build_request_url(Method::POST, url, true)?
-            .header("X-Requested-With", "XMLHttpRequest")
-            .header("striptags", "undefined")
-            .header("Origin", "https://cyberdrop.cr")
-            .header("Referer", "https://cyberdrop.cr/")
-            .header("Cache-Control", "no-cache")
-            .header("Pragma", "no-cache")
+            .upload_headers(self.build_request_url(Method::POST, url, true)?)
             .json(body);
 
         self.send_json(builder).await
@@ -156,17 +143,10 @@ impl Transport {
     where
         T: DeserializeOwned,
     {
-        let mut builder = self.build_request_url(Method::POST, url, true)?;
+        let mut builder = self.upload_headers(self.build_request_url(Method::POST, url, true)?);
         if let Some(id) = album_id {
             builder = builder.header("albumid", id);
         }
-        builder = builder
-            .header("X-Requested-With", "XMLHttpRequest")
-            .header("striptags", "undefined")
-            .header("Origin", "https://cyberdrop.cr")
-            .header("Referer", "https://cyberdrop.cr/")
-            .header("Cache-Control", "no-cache")
-            .header("Pragma", "no-cache");
 
         let builder = builder.multipart(form);
         self.send_json(builder).await
@@ -244,6 +224,19 @@ impl Transport {
 
     fn attach_token(builder: RequestBuilder, token: &AuthToken) -> RequestBuilder {
         builder.header(HeaderName::from_static("token"), token.as_str())
+    }
+
+    fn upload_headers(&self, builder: RequestBuilder) -> RequestBuilder {
+        let origin = self.base_url.origin().ascii_serialization();
+        let referer = self.base_url.as_str();
+
+        builder
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("striptags", "undefined")
+            .header("Origin", origin)
+            .header("Referer", referer)
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache")
     }
 }
 
@@ -323,5 +316,33 @@ mod tests {
             server_err,
             CyberdropError::RequestFailed(StatusCode::INTERNAL_SERVER_ERROR)
         );
+    }
+
+    #[test]
+    fn upload_headers_uses_default_base_url() {
+        let transport = transport_with_token("abc");
+        let builder = transport.upload_headers(transport.client.post("https://node.test/upload"));
+        let request = builder.build().unwrap();
+        let headers = request.headers();
+        assert_eq!(headers.get("Origin").unwrap(), "https://example.test");
+        assert_eq!(
+            headers.get("Referer").unwrap(),
+            "https://example.test/root/"
+        );
+    }
+
+    #[test]
+    fn upload_headers_derives_from_custom_base_url() {
+        let transport = Transport::new(
+            Client::new(),
+            Url::parse("https://dash.bunkr.cr/").unwrap(),
+            Some(AuthToken::new("tok")),
+        );
+        let builder =
+            transport.upload_headers(transport.client.post("https://cdn.bunkr.cr/upload"));
+        let request = builder.build().unwrap();
+        let headers = request.headers();
+        assert_eq!(headers.get("Origin").unwrap(), "https://dash.bunkr.cr");
+        assert_eq!(headers.get("Referer").unwrap(), "https://dash.bunkr.cr/");
     }
 }
