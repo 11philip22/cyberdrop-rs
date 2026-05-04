@@ -270,7 +270,7 @@ mod tests {
         let err = transport
             .build_request(Method::GET, "api/secure", true)
             .unwrap_err();
-        matches!(err, CyberdropError::MissingAuthToken);
+        assert!(matches!(err, CyberdropError::MissingAuthToken));
     }
 
     #[test]
@@ -300,22 +300,22 @@ mod tests {
         assert!(Transport::map_status(StatusCode::OK).is_ok());
 
         let auth_err = Transport::map_status(StatusCode::UNAUTHORIZED).unwrap_err();
-        matches!(
+        assert!(matches!(
             auth_err,
             CyberdropError::AuthenticationFailed(StatusCode::UNAUTHORIZED)
-        );
+        ));
 
         let forbidden = Transport::map_status(StatusCode::FORBIDDEN).unwrap_err();
-        matches!(
+        assert!(matches!(
             forbidden,
             CyberdropError::AuthenticationFailed(StatusCode::FORBIDDEN)
-        );
+        ));
 
         let server_err = Transport::map_status(StatusCode::INTERNAL_SERVER_ERROR).unwrap_err();
-        matches!(
+        assert!(matches!(
             server_err,
             CyberdropError::RequestFailed(StatusCode::INTERNAL_SERVER_ERROR)
-        );
+        ));
     }
 
     #[test]
