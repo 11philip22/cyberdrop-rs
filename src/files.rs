@@ -23,6 +23,7 @@ pub struct AlbumFile {
     pub album_id: String,
     pub extname: String,
     /// Thumbnail path relative to `image` (for example, `thumbs/<...>.png`).
+    #[serde(default)]
     pub thumb: String,
 }
 
