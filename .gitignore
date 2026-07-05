@@ -1,4 +1,5 @@
 Cargo.lock
 target/
-docs/
 .DS_Store
+artifacts/
+scripts/
