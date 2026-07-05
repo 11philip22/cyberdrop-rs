@@ -81,7 +81,6 @@ mod config;
 mod error;
 mod files;
 mod token;
-mod transport;
 mod uploads;
 
 pub use account::{Permissions, TokenVerification};

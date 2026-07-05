@@ -2,9 +2,6 @@ use std::fmt;
 
 use serde::Deserialize;
 
-use crate::CyberdropError;
-use crate::account::{LoginResponse, RegisterResponse};
-
 /// Authentication token returned by [`crate::CyberdropClient::login`] and
 /// [`crate::CyberdropClient::register`].
 ///
@@ -39,30 +36,5 @@ impl fmt::Debug for AuthToken {
         f.debug_struct("AuthToken")
             .field("token", &"<redacted>")
             .finish()
-    }
-}
-
-impl TryFrom<LoginResponse> for AuthToken {
-    type Error = CyberdropError;
-
-    fn try_from(response: LoginResponse) -> Result<Self, Self::Error> {
-        response.token.ok_or(CyberdropError::MissingToken)
-    }
-}
-
-impl TryFrom<RegisterResponse> for AuthToken {
-    type Error = CyberdropError;
-
-    fn try_from(body: RegisterResponse) -> Result<Self, Self::Error> {
-        if body.success.unwrap_or(false) {
-            return body.token.ok_or(CyberdropError::MissingToken);
-        }
-
-        let msg = body
-            .description
-            .or(body.message)
-            .unwrap_or_else(|| "registration failed".to_string());
-
-        Err(CyberdropError::Api(msg))
     }
 }

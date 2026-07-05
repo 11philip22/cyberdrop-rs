@@ -4,7 +4,10 @@ use std::task::{Context, Poll};
 
 use bytes::Bytes;
 use futures_core::Stream;
-use reqwest::{Body, Url};
+use reqwest::{
+    Body, Url,
+    multipart::{Form, Part},
+};
 use serde::{Deserialize, Serialize};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
@@ -50,19 +53,6 @@ pub(crate) struct NodeResponse {
 #[derive(Debug, Deserialize)]
 pub(crate) struct ChunkResponse {
     pub(crate) success: Option<bool>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct ChunkFields {
-    pub(crate) uuid: String,
-    pub(crate) chunk_index: u64,
-    pub(crate) total_size: u64,
-    pub(crate) chunk_size: u64,
-    pub(crate) total_chunks: u64,
-    pub(crate) byte_offset: u64,
-    pub(crate) file_name: String,
-    pub(crate) mime_type: String,
-    pub(crate) album_id: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -143,34 +133,6 @@ struct PreparedUpload {
     total_size: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UploadStrategy {
-    Single,
-    Chunked,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ChunkUploadPlan {
-    chunk_size: u64,
-    total_chunks: u64,
-}
-
-impl ChunkUploadPlan {
-    fn new(total_size: u64) -> Self {
-        let chunk_size = CHUNK_SIZE.min(total_size.max(1));
-        let total_chunks = total_size.div_ceil(chunk_size).max(1);
-
-        Self {
-            chunk_size,
-            total_chunks,
-        }
-    }
-
-    fn byte_offset(self, chunk_index: u64) -> u64 {
-        chunk_index * self.chunk_size
-    }
-}
-
 async fn prepare_upload_file(file_path: &Path) -> Result<PreparedUpload, CyberdropError> {
     let file_name = file_path
         .file_name()
@@ -194,54 +156,6 @@ async fn prepare_upload_file(file_path: &Path) -> Result<PreparedUpload, Cyberdr
     })
 }
 
-fn select_upload_strategy(total_size: u64) -> UploadStrategy {
-    if total_size <= CHUNK_SIZE {
-        UploadStrategy::Single
-    } else {
-        UploadStrategy::Chunked
-    }
-}
-
-fn build_chunk_fields(
-    uuid: &str,
-    chunk_index: u64,
-    plan: ChunkUploadPlan,
-    total_size: u64,
-    file_name: &str,
-    mime_type: &str,
-    album_id: Option<u64>,
-) -> ChunkFields {
-    ChunkFields {
-        uuid: uuid.to_string(),
-        chunk_index,
-        total_size,
-        chunk_size: plan.chunk_size,
-        total_chunks: plan.total_chunks,
-        byte_offset: plan.byte_offset(chunk_index),
-        file_name: file_name.to_string(),
-        mime_type: mime_type.to_string(),
-        album_id,
-    }
-}
-
-fn build_finish_chunks_payload(
-    uuid: String,
-    file_name: String,
-    mime: String,
-    album_id: Option<u64>,
-) -> FinishChunksPayload {
-    FinishChunksPayload {
-        files: vec![FinishFile {
-            uuid,
-            original: file_name,
-            r#type: mime,
-            albumid: album_id,
-            filelength: None,
-            age: None,
-        }],
-    }
-}
-
 fn finish_chunks_url(mut upload_url: Url) -> Url {
     upload_url.set_path("/api/upload/finishchunks");
     upload_url
@@ -252,7 +166,7 @@ impl CyberdropClient {
     ///
     /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
     pub async fn get_upload_url(&self) -> Result<Url, CyberdropError> {
-        let response: NodeResponse = self.transport.get_json("api/node", true).await?;
+        let response: NodeResponse = self.get_json("api/node", true).await?;
 
         if !response.success.unwrap_or(false) {
             let msg = response
@@ -313,15 +227,12 @@ impl CyberdropClient {
         let prepared = prepare_upload_file(file_path.as_ref()).await?;
         let upload_url = self.get_upload_url().await?;
 
-        match select_upload_strategy(prepared.total_size) {
-            UploadStrategy::Single => {
-                self.upload_small_file_with_progress(upload_url, prepared, album_id, on_progress)
-                    .await
-            }
-            UploadStrategy::Chunked => {
-                self.upload_chunked_file_with_progress(upload_url, prepared, album_id, on_progress)
-                    .await
-            }
+        if prepared.total_size <= CHUNK_SIZE {
+            self.upload_small_file_with_progress(upload_url, prepared, album_id, on_progress)
+                .await
+        } else {
+            self.upload_chunked_file_with_progress(upload_url, prepared, album_id, on_progress)
+                .await
         }
     }
 
@@ -346,12 +257,16 @@ impl CyberdropClient {
         let progress_stream =
             ProgressStream::new(stream, total_size, file_name.clone(), on_progress);
         let body = Body::wrap_stream(progress_stream);
+        let part = Part::stream_with_length(body, total_size).file_name(file_name.clone());
+        let part = match part.mime_str(&mime) {
+            Ok(p) => p,
+            Err(_) => Part::bytes(Vec::new()).file_name(file_name),
+        };
         let response: UploadResponse = self
-            .transport
-            .post_single_upload_stream_url(upload_url, body, total_size, file_name, &mime, album_id)
+            .post_upload_multipart_url(upload_url, Form::new().part("files[]", part), album_id)
             .await?;
 
-        UploadedFile::try_from(response)
+        parse_upload_response(response)
     }
 
     async fn upload_chunked_file_with_progress<F>(
@@ -371,11 +286,12 @@ impl CyberdropClient {
             total_size,
         } = prepared;
 
-        let plan = ChunkUploadPlan::new(total_size);
+        let chunk_size = CHUNK_SIZE.min(total_size.max(1));
+        let total_chunks = total_size.div_ceil(chunk_size).max(1);
         let uuid = Uuid::new_v4().to_string();
         let mut bytes_sent = 0u64;
         let mut chunk_index = 0u64;
-        let mut buffer = Vec::with_capacity(plan.chunk_size as usize);
+        let mut buffer = Vec::with_capacity(chunk_size as usize);
 
         loop {
             buffer.clear();
@@ -384,21 +300,22 @@ impl CyberdropClient {
                 break;
             }
 
+            let part = Part::bytes(buffer).file_name(file_name.clone());
+            let part = match part.mime_str(&mime) {
+                Ok(p) => p,
+                Err(_) => Part::bytes(Vec::new()).file_name(file_name.clone()),
+            };
+            let form = Form::new()
+                .text("dzuuid", uuid.clone())
+                .text("dzchunkindex", chunk_index.to_string())
+                .text("dztotalfilesize", total_size.to_string())
+                .text("dzchunksize", chunk_size.to_string())
+                .text("dztotalchunkcount", total_chunks.to_string())
+                .text("dzchunkbyteoffset", (chunk_index * chunk_size).to_string())
+                .part("files[]", part);
+
             let response: ChunkResponse = self
-                .transport
-                .post_chunk_url(
-                    upload_url.clone(),
-                    buffer,
-                    build_chunk_fields(
-                        &uuid,
-                        chunk_index,
-                        plan,
-                        total_size,
-                        &file_name,
-                        &mime,
-                        album_id,
-                    ),
-                )
+                .post_upload_multipart_url(upload_url.clone(), form, album_id)
                 .await?;
 
             if !response.success.unwrap_or(false) {
@@ -412,7 +329,7 @@ impl CyberdropClient {
                 total_bytes: total_size,
             });
             chunk_index = chunk_index.saturating_add(1);
-            buffer = Vec::with_capacity(plan.chunk_size as usize);
+            buffer = Vec::with_capacity(chunk_size as usize);
         }
 
         self.finish_chunked_upload(upload_url, uuid, file_name, mime, album_id)
@@ -427,36 +344,41 @@ impl CyberdropClient {
         mime: String,
         album_id: Option<u64>,
     ) -> Result<UploadedFile, CyberdropError> {
-        let payload = build_finish_chunks_payload(uuid, file_name, mime, album_id);
+        let payload = FinishChunksPayload {
+            files: vec![FinishFile {
+                uuid,
+                original: file_name,
+                r#type: mime,
+                albumid: album_id,
+                filelength: None,
+                age: None,
+            }],
+        };
         let finish_url = finish_chunks_url(upload_url);
 
-        let response: UploadResponse = self
-            .transport
-            .post_json_with_upload_headers_url(finish_url, &payload)
-            .await?;
+        let response: UploadResponse = self.post_upload_json_url(finish_url, &payload).await?;
 
-        UploadedFile::try_from(response)
+        parse_upload_response(response)
     }
 }
 
-impl TryFrom<UploadResponse> for UploadedFile {
-    type Error = CyberdropError;
-
-    fn try_from(body: UploadResponse) -> Result<Self, Self::Error> {
-        if body.success.unwrap_or(false) {
-            let first = body.files.and_then(|mut files| files.pop()).ok_or(
-                CyberdropError::MissingField("upload response missing files"),
-            )?;
-            let url = Url::parse(&first.url)?;
-            Ok(UploadedFile {
-                name: first.name,
-                url: url.to_string(),
-            })
-        } else {
-            let msg = body
-                .description
-                .unwrap_or_else(|| "upload failed".to_string());
-            Err(CyberdropError::Api(msg))
-        }
+fn parse_upload_response(body: UploadResponse) -> Result<UploadedFile, CyberdropError> {
+    if body.success.unwrap_or(false) {
+        let first =
+            body.files
+                .and_then(|mut files| files.pop())
+                .ok_or(CyberdropError::MissingField(
+                    "upload response missing files",
+                ))?;
+        let url = Url::parse(&first.url)?;
+        Ok(UploadedFile {
+            name: first.name,
+            url: url.to_string(),
+        })
+    } else {
+        let msg = body
+            .description
+            .unwrap_or_else(|| "upload failed".to_string());
+        Err(CyberdropError::Api(msg))
     }
 }
