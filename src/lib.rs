@@ -15,7 +15,7 @@
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
 //! // 1) Create an unauthenticated client.
-//! let client = CyberdropClient::builder().build()?;
+//! let client = CyberdropClient::new()?;
 //!
 //! // 2) Exchange credentials for a token.
 //! let token = client.login("username", "password").await?;
@@ -47,9 +47,8 @@
 //!
 //! ## Timeouts, Retries, Polling
 //!
-//! - **Timeouts:** The client uses a single *request* timeout configured via
-//!   [`CyberdropClientBuilder::timeout`]. The default is 30 seconds. Timeout failures surface as
-//!   [`CyberdropError::Http`] (from `reqwest`).
+//! - **Timeouts:** The client uses a single 30 second *request* timeout. Timeout failures surface
+//!   as [`CyberdropError::Http`] (from `reqwest`).
 //! - **Retries:** This crate does not implement retries, backoff, or idempotency safeguards.
 //!   If you need retries, add them at the call site.
 //! - **Polling:** This crate does not poll for eventual consistency. Methods return once the HTTP
@@ -76,8 +75,8 @@ mod token;
 mod uploads;
 
 pub use account::{Permissions, TokenVerification};
-pub use albums::{Album, AlbumFilesPage, EditAlbumResult};
-pub use client::{CyberdropClient, CyberdropClientBuilder};
+pub use albums::{Album, AlbumFiles, EditAlbumResult};
+pub use client::CyberdropClient;
 pub use error::CyberdropError;
 pub use files::AlbumFile;
 pub use token::AuthToken;

@@ -4,9 +4,9 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use cyberdrop_client::{AuthToken, CyberdropClient, CyberdropClientBuilder, CyberdropError};
+use cyberdrop_client::{AuthToken, CyberdropClient, CyberdropError};
 use tokio::sync::OnceCell;
 
 type TestResult<T = ()> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -29,7 +29,7 @@ async fn live_account() -> TestResult<&'static LiveAccount> {
             let username = format!("cdlive{suffix}");
             let password = format!("CdLive{suffix}Pass1");
 
-            let client = CyberdropClient::builder().build()?;
+            let client = CyberdropClient::new()?;
             let token = client.register(&username, &password).await?.into_string();
             let client = client.with_auth_token(token.clone());
 
@@ -61,17 +61,12 @@ async fn auth_builder_surface() -> TestResult {
     let authed = unauth.clone().with_auth_token("local-token");
     assert_eq!(authed.auth_token(), Some("local-token"));
 
-    let built = CyberdropClientBuilder::new()
-        .user_agent("cyberdrop-client-live-test")
-        .timeout(Duration::from_secs(30))
-        .auth_token("builder-token")
-        .build()?;
+    let built = CyberdropClient::new_with_token("builder-token")?;
     assert_eq!(built.auth_token(), Some("builder-token"));
 
     let account = live_account().await?;
 
-    let logged_in = CyberdropClient::builder()
-        .build()?
+    let logged_in = CyberdropClient::new()?
         .login(&account.username, &account.password)
         .await?;
     assert!(!logged_in.as_str().is_empty());
@@ -106,9 +101,8 @@ async fn album_surface() -> TestResult {
     let album = account.client.get_album_by_id(album_id).await?;
     assert_eq!(album.id, album_id);
 
-    let page = account.client.list_album_files_page(album_id, 0).await?;
     let all_files = account.client.list_album_files(album_id).await?;
-    assert_eq!(all_files.count, page.count);
+    assert!(all_files.files.len() as u64 <= all_files.count);
 
     let edited = account
         .client
@@ -185,9 +179,9 @@ async fn upload_surface() -> TestResult {
     assert!(!uploaded_with_progress.url.is_empty());
     assert!(progress_bytes.load(Ordering::SeqCst) > 0);
 
-    let page = account.client.list_album_files_page(album_id, 0).await?;
-    assert!(page.files.len() >= 2);
-    assert!(!page.files[0].name.is_empty());
+    let files = account.client.list_album_files(album_id).await?;
+    assert!(files.files.len() >= 2);
+    assert!(!files.files[0].name.is_empty());
 
     let _ = std::fs::remove_file(first_path);
     let _ = std::fs::remove_file(second_path);

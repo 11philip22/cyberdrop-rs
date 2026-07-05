@@ -70,8 +70,7 @@ pub(crate) struct VerifyTokenResponse {
 impl CyberdropClient {
     /// Authenticate and retrieve a token.
     ///
-    /// The returned token can be installed on a client via [`CyberdropClient::with_auth_token`]
-    /// or [`crate::CyberdropClientBuilder::auth_token`].
+    /// The returned token can be installed on a client via [`CyberdropClient::with_auth_token`].
     ///
     /// # Errors
     ///
@@ -94,8 +93,7 @@ impl CyberdropClient {
 
     /// Register a new account and retrieve a token.
     ///
-    /// The returned token can be installed on a client via [`CyberdropClient::with_auth_token`]
-    /// or [`crate::CyberdropClientBuilder::auth_token`].
+    /// The returned token can be installed on a client via [`CyberdropClient::with_auth_token`].
     ///
     /// Note: the API returns HTTP 200 even for validation failures; this method converts
     /// `{"success":false,...}` responses into [`CyberdropError::Api`].

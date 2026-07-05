@@ -37,15 +37,12 @@ pub struct Album {
     pub files: u64,
 }
 
-/// Page of files returned by the album listing endpoint.
-///
-/// This type represents a single response page; the API currently returns at most 25 files per
-/// request and provides a total `count` for pagination.
+/// Files returned by the album listing endpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AlbumFilesPage {
-    /// Files returned for the requested page.
+pub struct AlbumFiles {
+    /// Files collected for the album.
     pub files: Vec<AlbumFile>,
-    /// Total number of files in the album (across all pages).
+    /// Total number of files in the album.
     pub count: u64,
 }
 
@@ -138,8 +135,7 @@ impl CyberdropClient {
 
     /// List all files in an album ("folder") by iterating pages until exhaustion.
     ///
-    /// This calls [`CyberdropClient::list_album_files_page`] repeatedly starting at `page = 0` and
-    /// stops when:
+    /// Starts at `page = 0` and stops when:
     /// - enough files have been collected to satisfy the API-reported `count`, or
     /// - a page returns zero files.
     ///
@@ -147,19 +143,24 @@ impl CyberdropClient {
     ///
     /// # Returns
     ///
-    /// An [`AlbumFilesPage`] containing all collected files. The returned `count` is the total
-    /// file count as reported by the API.
+    /// An [`AlbumFiles`] value containing all collected files and the API-reported total count.
     ///
     /// # Errors
     ///
-    /// Any error returned by [`CyberdropClient::list_album_files_page`].
-    pub async fn list_album_files(&self, album_id: u64) -> Result<AlbumFilesPage, CyberdropError> {
+    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
+    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
+    /// - [`CyberdropError::Api`] for service-reported failures
+    /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
+    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
+    pub async fn list_album_files(&self, album_id: u64) -> Result<AlbumFiles, CyberdropError> {
         let mut page = 0u64;
         let mut all_files = Vec::new();
         let mut total_count = None::<u64>;
 
         loop {
-            let mut res = self.list_album_files_page(album_id, page).await?;
+            let path = format!("api/album/{album_id}/{page}");
+            let response: AlbumFilesResponse = self.get_json(&path, true).await?;
+            let mut res = parse_album_files(response)?;
 
             if total_count.is_none() {
                 total_count = Some(res.count);
@@ -180,34 +181,10 @@ impl CyberdropClient {
             page += 1;
         }
 
-        Ok(AlbumFilesPage {
+        Ok(AlbumFiles {
             files: all_files,
             count: total_count.unwrap_or(0),
         })
-    }
-
-    /// List files in an album ("folder") for a specific page.
-    ///
-    /// Page numbers are zero-based (`page = 0` is the first page). This is intentionally exposed
-    /// so a higher-level pagination helper can be added later.
-    ///
-    /// Requires an auth token (see [`CyberdropClient::with_auth_token`]).
-    ///
-    /// # Errors
-    ///
-    /// - [`CyberdropError::MissingAuthToken`] if the client has no configured token
-    /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
-    /// - [`CyberdropError::Api`] for service-reported failures
-    /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
-    /// - [`CyberdropError::Http`] for transport failures (including timeouts)
-    pub async fn list_album_files_page(
-        &self,
-        album_id: u64,
-        page: u64,
-    ) -> Result<AlbumFilesPage, CyberdropError> {
-        let path = format!("api/album/{album_id}/{page}");
-        let response: AlbumFilesResponse = self.get_json(&path, true).await?;
-        parse_album_files(response)
     }
 
     /// Create a new album and return its numeric ID.
@@ -290,7 +267,7 @@ fn parse_albums(body: AlbumsResponse) -> Result<Vec<Album>, CyberdropError> {
     ))
 }
 
-fn parse_album_files(body: AlbumFilesResponse) -> Result<AlbumFilesPage, CyberdropError> {
+fn parse_album_files(body: AlbumFilesResponse) -> Result<AlbumFiles, CyberdropError> {
     if !body.success.unwrap_or(false) {
         let msg = body
             .description
@@ -307,7 +284,7 @@ fn parse_album_files(body: AlbumFilesResponse) -> Result<AlbumFilesPage, Cyberdr
         "album files response missing count",
     ))?;
 
-    Ok(AlbumFilesPage { files, count })
+    Ok(AlbumFiles { files, count })
 }
 
 fn parse_create_album(body: CreateAlbumResponse) -> Result<u64, CyberdropError> {

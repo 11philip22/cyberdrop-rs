@@ -28,7 +28,7 @@ It wraps the browser-facing Cyberdrop endpoints with typed models, explicit erro
 ## Features
 
 - Login, register, and token verification.
-- Authenticated album listing, creation, metadata edits, and file pagination.
+- Authenticated album listing, creation, metadata edits, and file listing.
 - Single-file uploads with automatic upload-node discovery.
 - Streaming uploads for smaller files and chunked uploads for larger files.
 - Optional upload progress callback.
@@ -70,17 +70,12 @@ async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
 
 ## Client Setup
 
-Use `CyberdropClient::new()` for defaults, or the builder when you need a custom user agent, timeout, or initial token.
+Use `CyberdropClient::new()` for defaults, or `CyberdropClient::new_with_token(...)` when you already have a token.
 
 ```rust
 use cyberdrop_client::CyberdropClient;
-use std::time::Duration;
 
-let client = CyberdropClient::builder()
-    .user_agent("my-tool/1.0")
-    .timeout(Duration::from_secs(60))
-    .auth_token("existing-token")
-    .build()?;
+let client = CyberdropClient::new_with_token("existing-token")?;
 ```
 
 Authenticated requests use Cyberdrop's `token` header, not `Authorization: Bearer`.
@@ -104,8 +99,6 @@ for album in albums {
     println!("{} has {} files", album.name, files.count);
 }
 ```
-
-Use `list_album_files_page(album_id, page)` when you want to control pagination yourself.
 
 ### Edit an album
 
@@ -143,10 +136,10 @@ let uploaded = client
 
 | Area | Methods |
 | --- | --- |
-| Client | `new`, `builder`, `with_auth_token`, `auth_token` |
+| Client | `new`, `new_with_token`, `with_auth_token`, `auth_token` |
 | Account | `login`, `register`, `verify_token` |
 | Albums | `list_albums`, `get_album_by_id`, `create_album`, `edit_album` |
-| Files | `list_album_files`, `list_album_files_page` |
+| Files | `list_album_files` |
 | Uploads | `get_upload_url`, `upload_file`, `upload_file_with_progress` |
 
 ## Error Model

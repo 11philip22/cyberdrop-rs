@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use reqwest::{
     Client, Method, RequestBuilder, StatusCode, Url,
     header::{ACCEPT, ACCEPT_LANGUAGE, HeaderName},
@@ -19,28 +17,24 @@ pub struct CyberdropClient {
     pub(crate) auth_token: Option<AuthToken>,
 }
 
-/// Builder for [`CyberdropClient`].
-#[derive(Debug)]
-pub struct CyberdropClientBuilder {
-    user_agent: Option<String>,
-    timeout: Duration,
-    auth_token: Option<AuthToken>,
-}
-
 impl CyberdropClient {
     /// Build a client with the crate defaults.
     pub fn new() -> Result<Self, CyberdropError> {
-        CyberdropClientBuilder::new().build()
+        let client = Client::builder()
+            .timeout(DEFAULT_TIMEOUT)
+            .user_agent(default_user_agent())
+            .build()?;
+
+        Ok(Self {
+            client,
+            base_url: Url::parse(DEFAULT_BASE_URL)?,
+            auth_token: None,
+        })
     }
 
-    /// Start configuring a client with the crate's defaults.
-    ///
-    /// Defaults:
-    /// - Base URL: `https://cyberdrop.cr/`
-    /// - Timeout: 30 seconds
-    /// - User agent: a browser-like UA string
-    pub fn builder() -> CyberdropClientBuilder {
-        CyberdropClientBuilder::new()
+    /// Build a client with the crate defaults and an auth token.
+    pub fn new_with_token(token: impl Into<String>) -> Result<Self, CyberdropError> {
+        Ok(Self::new()?.with_auth_token(token))
     }
 
     /// Current auth token if configured.
@@ -211,63 +205,6 @@ impl CyberdropClient {
             .header("Referer", referer)
             .header("Cache-Control", "no-cache")
             .header("Pragma", "no-cache")
-    }
-}
-
-impl CyberdropClientBuilder {
-    /// Create a new builder using the crate defaults.
-    ///
-    /// This is equivalent to [`CyberdropClient::builder`].
-    pub fn new() -> Self {
-        Self {
-            user_agent: None,
-            timeout: DEFAULT_TIMEOUT,
-            auth_token: None,
-        }
-    }
-
-    /// Set a custom user agent header.
-    pub fn user_agent(mut self, user_agent: impl Into<String>) -> Self {
-        self.user_agent = Some(user_agent.into());
-        self
-    }
-
-    /// Provide an auth token that will be sent as bearer auth.
-    pub fn auth_token(mut self, token: impl Into<String>) -> Self {
-        self.auth_token = Some(AuthToken::new(token));
-        self
-    }
-
-    /// Configure the request timeout.
-    ///
-    /// This sets [`reqwest::ClientBuilder::timeout`], which applies a single deadline per request.
-    /// Timeout failures surface as [`CyberdropError::Http`].
-    pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
-    }
-
-    /// Build a [`CyberdropClient`].
-    ///
-    /// Requests use `https://cyberdrop.cr/`.
-    /// If no user agent is configured, a browser-like UA string is used.
-    pub fn build(self) -> Result<CyberdropClient, CyberdropError> {
-        let mut builder = Client::builder().timeout(self.timeout);
-        builder = builder.user_agent(self.user_agent.unwrap_or_else(default_user_agent));
-
-        let client = builder.build()?;
-
-        Ok(CyberdropClient {
-            client,
-            base_url: Url::parse(DEFAULT_BASE_URL)?,
-            auth_token: self.auth_token,
-        })
-    }
-}
-
-impl Default for CyberdropClientBuilder {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
