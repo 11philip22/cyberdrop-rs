@@ -12,8 +12,7 @@
   <a href="#quick-start">Quick Start</a> •
   <a href="#common-tasks">Common Tasks</a> •
   <a href="#api-surface">API Surface</a> •
-  <a href="#development">Development</a> •
-  <a href="#api-notes">API Notes</a>
+  <a href="#development">Development</a>
 </p>
 
 ---
@@ -21,9 +20,6 @@
 Async Rust client for a focused subset of the [Cyberdrop](https://cyberdrop.cr) API.
 
 It wraps the browser-facing Cyberdrop endpoints with typed models, explicit errors, and a small `reqwest`-based async surface suitable for CLI tools and simple services.
-
-> [!NOTE]
-> Cyberdrop is an external service and can change without notice. The notes in `docs/apis/` capture the API behavior observed while building this crate.
 
 ## Features
 
@@ -166,15 +162,3 @@ Live tests are feature-gated because they create real Cyberdrop accounts, albums
 ```sh
 cargo test --features live-tests
 ```
-
-## API Notes
-
-Endpoint research lives in [`docs/apis/`](docs/apis/):
-
-- [`auth.md`](docs/apis/auth.md)
-- [`albums.md`](docs/apis/albums.md)
-- [`uploads.md`](docs/apis/uploads.md)
-- [`public-files.md`](docs/apis/public-files.md)
-- [`configuration.md`](docs/apis/configuration.md)
-
-Use those files when extending the typed client surface.
