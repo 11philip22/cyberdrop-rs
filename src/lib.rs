@@ -74,15 +74,20 @@
 //! [`CyberdropClient::get`] is intentionally low-level: it returns the raw [`reqwest::Response`]
 //! and does **not** treat non-2xx status codes as errors.
 
+mod account;
+mod albums;
 mod client;
+mod config;
 mod error;
-mod models;
+mod files;
+mod token;
 mod transport;
+mod uploads;
 
-pub(crate) use client::ChunkFields;
+pub use account::{Permissions, TokenVerification};
+pub use albums::{Album, AlbumFilesPage, AlbumsList, EditAlbumResult};
 pub use client::{CyberdropClient, CyberdropClientBuilder};
 pub use error::CyberdropError;
-pub use models::{
-    Album, AlbumFile, AlbumFilesPage, AlbumsList, AuthToken, EditAlbumResult, Permissions,
-    TokenVerification, UploadProgress, UploadedFile,
-};
+pub use files::AlbumFile;
+pub use token::AuthToken;
+pub use uploads::{UploadProgress, UploadedFile};

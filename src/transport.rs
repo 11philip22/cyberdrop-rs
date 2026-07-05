@@ -1,11 +1,13 @@
 use reqwest::{
-    Client, Method, RequestBuilder, StatusCode, Url,
+    Body, Client, Method, RequestBuilder, StatusCode, Url,
     header::{ACCEPT, ACCEPT_LANGUAGE, HeaderName},
     multipart::{Form, Part},
 };
 use serde::de::DeserializeOwned;
 
-use crate::{AuthToken, ChunkFields, CyberdropError};
+use crate::CyberdropError;
+use crate::token::AuthToken;
+use crate::uploads::ChunkFields;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Transport {
@@ -130,10 +132,13 @@ impl Transport {
         self.send_json(builder).await
     }
 
-    pub(crate) async fn post_single_upload_url<T>(
+    pub(crate) async fn post_single_upload_stream_url<T>(
         &self,
         url: Url,
-        form: Form,
+        body: Body,
+        total_size: u64,
+        file_name: String,
+        mime: &str,
         album_id: Option<u64>,
     ) -> Result<T, CyberdropError>
     where
@@ -144,7 +149,13 @@ impl Transport {
             builder = builder.header("albumid", id);
         }
 
-        let builder = builder.multipart(form);
+        let part = Part::stream_with_length(body, total_size).file_name(file_name.clone());
+        let part = match part.mime_str(mime) {
+            Ok(p) => p,
+            Err(_) => Part::bytes(Vec::new()).file_name(file_name),
+        };
+
+        let builder = builder.multipart(Form::new().part("files[]", part));
         self.send_json(builder).await
     }
 
