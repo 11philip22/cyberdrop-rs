@@ -30,8 +30,11 @@ pub struct UploadedFile {
 /// Upload progress information emitted during file uploads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadProgress {
+    /// File name currently being uploaded.
     pub file_name: String,
+    /// Bytes sent so far.
     pub bytes_sent: u64,
+    /// Total file size in bytes.
     pub total_bytes: u64,
 }
 

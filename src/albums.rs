@@ -108,6 +108,12 @@ pub(crate) struct AlbumFilesResponse {
 }
 
 impl CyberdropClient {
+    /// Fetch an album from [`CyberdropClient::list_albums`] by numeric ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CyberdropError::AlbumNotFound`] if the authenticated account has no album with
+    /// `album_id`; otherwise returns the same errors as [`CyberdropClient::list_albums`].
     pub async fn get_album_by_id(&self, album_id: u64) -> Result<Album, CyberdropError> {
         let albums = self.list_albums().await?;
         albums
