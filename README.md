@@ -1,36 +1,46 @@
+<h1 align="center">cyberdrop-client</h1>
+
 <p align="center">
-  <img src="assets/hero-banner.png" alt="hero pane" width="980">
+  <a href="https://crates.io/crates/cyberdrop-client"><img src="https://img.shields.io/crates/v/cyberdrop-client?style=flat-square&logo=rust" alt="Crates.io"></a>
+  <a href="https://docs.rs/cyberdrop-client"><img src="https://img.shields.io/docsrs/cyberdrop-client?style=flat-square&logo=docs.rs" alt="docs.rs"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-2024-orange?style=flat-square&logo=rust" alt="Rust 2024"></a>
 </p>
 
 <p align="center">
-  <a href="https://crates.io/crates/cyberdrop-client"><img src="https://img.shields.io/badge/crates.io-cyberdrop--client-F59E0B?style=for-the-badge&logo=rust&logoColor=white" alt="Crates.io"></a>
-  <a href="https://docs.rs/cyberdrop-client"><img src="https://img.shields.io/badge/docs.rs-cyberdrop--client-3B82F6?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Documentation"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" alt="MIT License"></a>
-  <a href="https://github.com/11philip22/cyberdrop-rs/pulls"><img src="https://img.shields.io/badge/PRs-Welcome-22C55E?style=for-the-badge" alt="PRs Welcome"></a>
-</p>
-
-<p align="center">
-  <a href="#features">Features</a> · <a href="#installation">Installation</a> · <a href="#quick-start">Quick Start</a> · <a href="#examples">Examples</a> · <a href="#documentation">Documentation</a>
+  <a href="#features">Features</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#common-tasks">Common Tasks</a> •
+  <a href="#api-surface">API Surface</a> •
+  <a href="#development">Development</a> •
+  <a href="#api-notes">API Notes</a>
 </p>
 
 ---
 
-An async Rust client for the [Cyberdrop](https://cyberdrop.cr) API, built on [reqwest](https://github.com/seanmonstar/reqwest).
+Async Rust client for a focused subset of the [Cyberdrop](https://cyberdrop.cr) API.
+
+It wraps the browser-facing Cyberdrop endpoints with typed models, explicit errors, and a small `reqwest`-based async surface suitable for CLI tools and simple services.
+
+> [!NOTE]
+> Cyberdrop is an external service and can change without notice. The notes in `docs/apis/` capture the API behavior observed while building this crate.
 
 ## Features
 
-- **Authentication** — Login, register, and token verification with permission flags.
-- **Album management** — List, create, and edit metadata/flags.
-- **File listing** — Album file listing with built-in pagination (single page or all pages).
-- **Uploads** — Automatic upload-node discovery, streaming for small files, chunked uploads for large files, and per-file progress callbacks.
-- **Typed models** — Explicit error types for auth failures, album-not-found, album-exists, and missing fields.
-- **Low-level access** — Optional raw `get` for endpoints not covered by higher-level methods.
+- Login, register, and token verification.
+- Authenticated album listing, creation, metadata edits, and file pagination.
+- Single-file uploads with automatic upload-node discovery.
+- Streaming uploads for smaller files and chunked uploads for larger files.
+- Optional upload progress callback.
+- Low-level raw `GET` escape hatch for uncovered endpoints.
+- Typed error model for auth failures, missing tokens, missing fields, API errors, I/O errors, and HTTP transport failures.
 
 ## Installation
 
 ```toml
 [dependencies]
-cyberdrop-client = "0.4"
+cyberdrop-client = "0.5"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
 ## Quick Start
@@ -41,48 +51,140 @@ use std::path::Path;
 
 #[tokio::main]
 async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
-    let client = CyberdropClient::builder().build()?;
+    let client = CyberdropClient::new()?;
     let token = client.login("username", "password").await?;
 
-    let authed = client.with_auth_token(token.into_string());
-    let albums = authed.list_albums().await?;
-    println!("albums: {}", albums.albums.len());
+    let client = client.with_auth_token(token.into_string());
 
-    let album_id = authed
-        .create_album("my uploads", Some("created by cyberdrop-client"))
+    let album_id = client
+        .create_album("uploads from rust", Some("created by cyberdrop-client"))
         .await?;
-    let uploaded = authed
-        .upload_file(Path::new("path/to/file.jpg"), Some(album_id))
+
+    let uploaded = client
+        .upload_file(Path::new("image.jpg"), Some(album_id))
         .await?;
+
     println!("uploaded {} -> {}", uploaded.name, uploaded.url);
     Ok(())
 }
 ```
 
-## Examples
+## Client Setup
 
-Examples live in `examples/` and accept args or environment variables.
+Use `CyberdropClient::new()` for defaults, or the builder when you need a custom user agent, timeout, or initial token.
 
-Environment variables used by most examples:
-- `CYBERDROP_USERNAME`
-- `CYBERDROP_PASSWORD`
+```rust
+use cyberdrop_client::CyberdropClient;
+use std::time::Duration;
 
-```sh
-cargo run --example register -- <username> <password>
-cargo run --example login -- <username> <password>
-cargo run --example list_albums -- <username> <password>
-cargo run --example create_album -- <username> <password> "<name>" ["<description>"]
-cargo run --example edit_album -- <username> <password> <album_id> ["<new_name>"] ["<new_identifier>"]
-cargo run --example list_album_files -- <username> <password> <album_id> [page]
-cargo run --example upload_file -- <username> <password> <path> [album_id]
+let client = CyberdropClient::builder()
+    .user_agent("my-tool/1.0")
+    .timeout(Duration::from_secs(60))
+    .auth_token("existing-token")
+    .build()?;
 ```
 
-## Documentation
+Authenticated requests use Cyberdrop's `token` header, not `Authorization: Bearer`.
 
-For detailed API documentation, visit [docs.rs/cyberdrop-client](https://docs.rs/cyberdrop-client).
+## Common Tasks
 
-## Support
+### Verify a token
 
-If this crate saves you time or helps your work, support is appreciated:
+```rust
+let verification = client.verify_token("token-to-check").await?;
+println!("{}: {}", verification.username, verification.success);
+```
 
-[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/11philip22)
+### List albums and files
+
+```rust
+let albums = client.list_albums().await?;
+
+for album in albums.albums {
+    let files = client.list_album_files(album.id).await?;
+    println!("{} has {} files", album.name, files.count);
+}
+```
+
+Use `list_album_files_page(album_id, page)` when you want to control pagination yourself.
+
+### Edit an album
+
+```rust
+let album = client.get_album_by_id(album_id).await?;
+
+let edited = client
+    .edit_album(
+        album.id,
+        "new name",
+        album.description,
+        album.download,
+        album.public,
+        false,
+    )
+    .await?;
+```
+
+Pass `true` as the last argument to request a new public link identifier.
+
+### Track upload progress
+
+```rust
+let uploaded = client
+    .upload_file_with_progress("video.mp4", Some(album_id), |progress| {
+        println!(
+            "{}: {}/{} bytes",
+            progress.file_name, progress.bytes_sent, progress.total_bytes
+        );
+    })
+    .await?;
+```
+
+## API Surface
+
+| Area | Methods |
+| --- | --- |
+| Client | `new`, `builder`, `with_auth_token`, `auth_token`, `get` |
+| Account | `login`, `register`, `verify_token` |
+| Albums | `list_albums`, `get_album_by_id`, `create_album`, `edit_album` |
+| Files | `list_album_files`, `list_album_files_page` |
+| Uploads | `get_upload_url`, `upload_file`, `upload_file_with_progress` |
+
+## Error Model
+
+Higher-level methods convert non-success HTTP responses into `CyberdropError`:
+
+- `401` and `403` become `AuthenticationFailed`.
+- Other non-2xx statuses become `RequestFailed`.
+- API-level failures become `Api`.
+- Missing required response fields become `MissingField`.
+- File reads become `Io`.
+- Network, TLS, DNS, timeout, and response decode failures become `Http`.
+
+`CyberdropClient::get` is intentionally lower level and returns the raw `reqwest::Response` without mapping non-2xx status codes.
+
+## Development
+
+```sh
+cargo fmt
+cargo check --all-features --all-targets
+cargo test
+```
+
+Live tests are feature-gated because they create real Cyberdrop accounts, albums, and uploads:
+
+```sh
+cargo test --features live-tests
+```
+
+## API Notes
+
+Endpoint research lives in [`docs/apis/`](docs/apis/):
+
+- [`auth.md`](docs/apis/auth.md)
+- [`albums.md`](docs/apis/albums.md)
+- [`uploads.md`](docs/apis/uploads.md)
+- [`public-files.md`](docs/apis/public-files.md)
+- [`configuration.md`](docs/apis/configuration.md)
+
+Use those files when extending the typed client surface.
