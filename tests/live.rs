@@ -109,16 +109,14 @@ async fn album_surface() -> TestResult {
         .await?;
 
     let albums: AlbumsList = account.client.list_albums().await?;
-    assert!(albums.success);
     assert!(albums.albums.iter().any(|album| album.id == album_id));
 
     let album: Album = account.client.get_album_by_id(album_id).await?;
     assert_eq!(album.id, album_id);
 
     let page: AlbumFilesPage = account.client.list_album_files_page(album_id, 0).await?;
-    assert!(page.success);
     let all_files: AlbumFilesPage = account.client.list_album_files(album_id).await?;
-    assert!(all_files.success);
+    assert_eq!(all_files.count, page.count);
 
     let edited: EditAlbumResult = account
         .client
@@ -133,19 +131,22 @@ async fn album_surface() -> TestResult {
         .await?;
     assert!(edited.name.is_some() || edited.identifier.is_some());
 
-    let identifier = account.client.request_new_album_link(album_id).await?;
-    assert!(!identifier.is_empty());
-
-    account
+    let album = account.client.get_album_by_id(album_id).await?;
+    let relinked = account
         .client
-        .set_album_name(album_id, format!("cyberdrop-client live renamed {suffix}"))
+        .edit_album(
+            album_id,
+            album.name,
+            album.description,
+            album.download,
+            album.public,
+            true,
+        )
         .await?;
-    account
-        .client
-        .set_album_description(album_id, "description changed by live sdk test")
-        .await?;
-    account.client.set_album_download(album_id, false).await?;
-    account.client.set_album_public(album_id, false).await?;
+    let identifier = relinked.identifier.ok_or(CyberdropError::MissingField(
+        "edit album response missing identifier",
+    ))?;
+    assert!(!identifier.trim_start_matches('/').is_empty());
 
     Ok(())
 }

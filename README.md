@@ -20,7 +20,7 @@ An async Rust client for the [Cyberdrop](https://cyberdrop.cr) API, built on [re
 ## Features
 
 - **Authentication** — Login, register, and token verification with permission flags.
-- **Album management** — List, create, edit metadata, toggle public/download, and rotate share links.
+- **Album management** — List, create, and edit metadata/flags.
 - **File listing** — Album file listing with built-in pagination (single page or all pages).
 - **Uploads** — Automatic upload-node discovery, streaming for small files, chunked uploads for large files, and per-file progress callbacks.
 - **Typed models** — Explicit error types for auth failures, album-not-found, album-exists, and missing fields.
@@ -74,7 +74,6 @@ cargo run --example list_albums -- <username> <password>
 cargo run --example create_album -- <username> <password> "<name>" ["<description>"]
 cargo run --example edit_album -- <username> <password> <album_id> ["<new_name>"] ["<new_identifier>"]
 cargo run --example list_album_files -- <username> <password> <album_id> [page]
-cargo run --example request_new_album_link -- <username> <password> <album_id>
 cargo run --example upload_file -- <username> <password> <path> [album_id]
 ```
 

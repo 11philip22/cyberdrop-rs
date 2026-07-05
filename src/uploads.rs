@@ -47,6 +47,11 @@ pub(crate) struct NodeResponse {
     pub(crate) description: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+pub(crate) struct ChunkResponse {
+    pub(crate) success: Option<bool>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkFields {
     pub(crate) uuid: String,
@@ -379,7 +384,7 @@ impl CyberdropClient {
                 break;
             }
 
-            let response: serde_json::Value = self
+            let response: ChunkResponse = self
                 .transport
                 .post_chunk_url(
                     upload_url.clone(),
@@ -396,11 +401,7 @@ impl CyberdropClient {
                 )
                 .await?;
 
-            if !response
-                .get("success")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
+            if !response.success.unwrap_or(false) {
                 return Err(CyberdropError::Api(format!("chunk {} failed", chunk_index)));
             }
 
