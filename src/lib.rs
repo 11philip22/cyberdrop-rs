@@ -69,12 +69,6 @@
 //! - [`CyberdropError::Io`] when reading local files (for example, in [`CyberdropClient::upload_file`])
 //! - [`CyberdropError::Http`] for network/transport failures (DNS, TLS, connection errors, timeouts)
 //!
-//! ## Base URL Semantics
-//!
-//! The base URL is joined with relative paths via [`Url::join`]. If you supply a custom base URL,
-//! prefer including a trailing slash (for example, `https://example.test/`), so relative joins
-//! behave as expected.
-//!
 //! ## Low-Level Requests
 //!
 //! [`CyberdropClient::get`] is intentionally low-level: it returns the raw [`reqwest::Response`]

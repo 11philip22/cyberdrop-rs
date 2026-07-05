@@ -15,7 +15,7 @@
 
 ---
 
-An async Rust client for the [Cyberdrop](https://cyberdrop.cr) and [Bunkr](https://bunkr.cr) APIs, built on [reqwest](https://github.com/seanmonstar/reqwest).
+An async Rust client for the [Cyberdrop](https://cyberdrop.cr) API, built on [reqwest](https://github.com/seanmonstar/reqwest).
 
 ## Features
 
@@ -34,8 +34,6 @@ cyberdrop-client = "0.4"
 ```
 
 ## Quick Start
-
-### Cyberdrop
 
 ```rust
 use cyberdrop_client::CyberdropClient;
@@ -59,16 +57,6 @@ async fn main() -> Result<(), cyberdrop_client::CyberdropError> {
     println!("uploaded {} -> {}", uploaded.name, uploaded.url);
     Ok(())
 }
-```
-
-### Bunkr
-
-```rust
-let client = CyberdropClient::builder()
-    .base_url("https://dash.bunkr.cr")?
-    .auth_token("your_auth_token_here")
-    .timeout(std::time::Duration::from_secs(500))
-    .build()?;
 ```
 
 ## Examples

@@ -23,10 +23,6 @@ impl Transport {
         }
     }
 
-    pub(crate) fn base_url(&self) -> &Url {
-        &self.base_url
-    }
-
     pub(crate) fn auth_token(&self) -> Option<&str> {
         self.auth_token.as_ref().map(AuthToken::as_str)
     }
@@ -239,4 +235,3 @@ impl Transport {
             .header("Pragma", "no-cache")
     }
 }
-

@@ -229,7 +229,6 @@ pub struct CyberdropClient {
 /// Builder for [`CyberdropClient`].
 #[derive(Debug)]
 pub struct CyberdropClientBuilder {
-    base_url: Option<Url>,
     user_agent: Option<String>,
     timeout: Duration,
     auth_token: Option<AuthToken>,
@@ -241,12 +240,9 @@ const DEFAULT_BASE_URL: &str = "https://cyberdrop.cr/";
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl CyberdropClient {
-    /// Build a client with a custom base URL.
-    ///
-    /// `base_url` is parsed as a [`Url`]. It is then used as the base for relative API paths via
-    /// [`Url::join`], so a trailing slash is recommended.
-    pub fn new(base_url: impl AsRef<str>) -> Result<Self, CyberdropError> {
-        CyberdropClientBuilder::new().base_url(base_url)?.build()
+    /// Build a client with the crate defaults.
+    pub fn new() -> Result<Self, CyberdropError> {
+        CyberdropClientBuilder::new().build()
     }
 
     /// Start configuring a client with the crate's defaults.
@@ -257,11 +253,6 @@ impl CyberdropClient {
     /// - User agent: a browser-like UA string
     pub fn builder() -> CyberdropClientBuilder {
         CyberdropClientBuilder::new()
-    }
-
-    /// Current base URL.
-    pub fn base_url(&self) -> &Url {
-        self.transport.base_url()
     }
 
     /// Current auth token if configured.
@@ -978,18 +969,11 @@ impl CyberdropClientBuilder {
     /// This is equivalent to [`CyberdropClient::builder`].
     pub fn new() -> Self {
         Self {
-            base_url: None,
             user_agent: None,
             timeout: DEFAULT_TIMEOUT,
             auth_token: None,
             builder: Client::builder(),
         }
-    }
-
-    /// Override the base URL used for requests.
-    pub fn base_url(mut self, base_url: impl AsRef<str>) -> Result<Self, CyberdropError> {
-        self.base_url = Some(Url::parse(base_url.as_ref())?);
-        Ok(self)
     }
 
     /// Set a custom user agent header.
@@ -1015,21 +999,16 @@ impl CyberdropClientBuilder {
 
     /// Build a [`CyberdropClient`].
     ///
-    /// If no base URL is configured, this uses `https://cyberdrop.cr/`.
+    /// Requests use `https://cyberdrop.cr/`.
     /// If no user agent is configured, a browser-like UA string is used.
     pub fn build(self) -> Result<CyberdropClient, CyberdropError> {
-        let base_url = match self.base_url {
-            Some(url) => url,
-            None => Url::parse(DEFAULT_BASE_URL)?,
-        };
-
         let mut builder = self.builder.timeout(self.timeout);
         builder = builder.user_agent(self.user_agent.unwrap_or_else(default_user_agent));
 
         let client = builder.build()?;
 
         Ok(CyberdropClient {
-            transport: Transport::new(client, base_url, self.auth_token),
+            transport: Transport::new(client, Url::parse(DEFAULT_BASE_URL)?, self.auth_token),
         })
     }
 }
@@ -1044,4 +1023,3 @@ fn default_user_agent() -> String {
     // Match a browser UA; the service appears to expect browser-like clients.
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) Gecko/20100101 Firefox/147.0".into()
 }
-
