@@ -36,6 +36,3 @@ bytes = "1"
 futures-core = "0.3"
 tokio-util = { version = "0.7", features = ["io"] }
 tokio = { version = "1", features = ["fs", "io-util"] }
-
-[dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
