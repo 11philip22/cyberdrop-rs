@@ -32,7 +32,6 @@ It wraps the browser-facing Cyberdrop endpoints with typed models, explicit erro
 - Single-file uploads with automatic upload-node discovery.
 - Streaming uploads for smaller files and chunked uploads for larger files.
 - Optional upload progress callback.
-- Low-level raw `GET` escape hatch for uncovered endpoints.
 - Typed error model for auth failures, missing tokens, missing fields, API errors, I/O errors, and HTTP transport failures.
 
 ## Installation
@@ -100,7 +99,7 @@ println!("{}: {}", verification.username, verification.success);
 ```rust
 let albums = client.list_albums().await?;
 
-for album in albums.albums {
+for album in albums {
     let files = client.list_album_files(album.id).await?;
     println!("{} has {} files", album.name, files.count);
 }
@@ -144,7 +143,7 @@ let uploaded = client
 
 | Area | Methods |
 | --- | --- |
-| Client | `new`, `builder`, `with_auth_token`, `auth_token`, `get` |
+| Client | `new`, `builder`, `with_auth_token`, `auth_token` |
 | Account | `login`, `register`, `verify_token` |
 | Albums | `list_albums`, `get_album_by_id`, `create_album`, `edit_album` |
 | Files | `list_album_files`, `list_album_files_page` |
@@ -160,8 +159,6 @@ Higher-level methods convert non-success HTTP responses into `CyberdropError`:
 - Missing required response fields become `MissingField`.
 - File reads become `Io`.
 - Network, TLS, DNS, timeout, and response decode failures become `Http`.
-
-`CyberdropClient::get` is intentionally lower level and returns the raw `reqwest::Response` without mapping non-2xx status codes.
 
 ## Development
 

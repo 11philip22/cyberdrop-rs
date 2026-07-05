@@ -1,6 +1,3 @@
-use std::collections::HashMap;
-
-use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use crate::CyberdropError;
@@ -40,15 +37,6 @@ pub struct Album {
     pub files: u64,
 }
 
-/// Album listing for the authenticated user.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AlbumsList {
-    /// Albums returned by the service.
-    pub albums: Vec<Album>,
-    /// Optional home domain returned by the service, parsed as a URL.
-    pub home_domain: Option<Url>,
-}
-
 /// Page of files returned by the album listing endpoint.
 ///
 /// This type represents a single response page; the API currently returns at most 25 files per
@@ -59,12 +47,6 @@ pub struct AlbumFilesPage {
     pub files: Vec<AlbumFile>,
     /// Total number of files in the album (across all pages).
     pub count: u64,
-    /// Album mapping returned by the service (keyed by album id as a string).
-    pub albums: HashMap<String, String>,
-    /// Base domain returned by the service (parsed as a URL).
-    ///
-    /// Note: the API omits this field for empty albums, so it can be `None`.
-    pub base_domain: Option<Url>,
 }
 
 #[derive(Debug, Serialize)]
@@ -117,7 +99,6 @@ pub struct EditAlbumResult {
 pub(crate) struct AlbumsResponse {
     pub(crate) success: Option<bool>,
     pub(crate) albums: Option<Vec<Album>>,
-    pub(crate) home_domain: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -125,8 +106,6 @@ pub(crate) struct AlbumFilesResponse {
     pub(crate) success: Option<bool>,
     pub(crate) files: Option<Vec<AlbumFile>>,
     pub(crate) count: Option<u64>,
-    pub(crate) albums: Option<HashMap<String, String>>,
-    pub(crate) basedomain: Option<String>,
     pub(crate) message: Option<String>,
     pub(crate) description: Option<String>,
 }
@@ -135,7 +114,6 @@ impl CyberdropClient {
     pub async fn get_album_by_id(&self, album_id: u64) -> Result<Album, CyberdropError> {
         let albums = self.list_albums().await?;
         albums
-            .albums
             .into_iter()
             .find(|album| album.id == album_id)
             .ok_or(CyberdropError::AlbumNotFound(album_id))
@@ -151,7 +129,7 @@ impl CyberdropClient {
     /// - [`CyberdropError::AuthenticationFailed`] / [`CyberdropError::RequestFailed`] for non-2xx statuses
     /// - [`CyberdropError::MissingField`] if expected fields are missing in the response body
     /// - [`CyberdropError::Http`] for transport failures (including timeouts)
-    pub async fn list_albums(&self) -> Result<AlbumsList, CyberdropError> {
+    pub async fn list_albums(&self) -> Result<Vec<Album>, CyberdropError> {
         let response: AlbumsResponse = self
             .get_json_with_header("api/albums", true, "Simple", "1")
             .await?;
@@ -179,19 +157,13 @@ impl CyberdropClient {
         let mut page = 0u64;
         let mut all_files = Vec::new();
         let mut total_count = None::<u64>;
-        let mut albums = HashMap::new();
-        let mut base_domain = None::<Url>;
 
         loop {
             let mut res = self.list_album_files_page(album_id, page).await?;
 
-            if base_domain.is_none() {
-                base_domain = res.base_domain.clone();
-            }
             if total_count.is_none() {
                 total_count = Some(res.count);
             }
-            albums.extend(res.albums.into_iter());
 
             if res.files.is_empty() {
                 break;
@@ -211,8 +183,6 @@ impl CyberdropClient {
         Ok(AlbumFilesPage {
             files: all_files,
             count: total_count.unwrap_or(0),
-            albums,
-            base_domain,
         })
     }
 
@@ -310,24 +280,14 @@ impl CyberdropClient {
     }
 }
 
-fn parse_albums(body: AlbumsResponse) -> Result<AlbumsList, CyberdropError> {
+fn parse_albums(body: AlbumsResponse) -> Result<Vec<Album>, CyberdropError> {
     if !body.success.unwrap_or(false) {
         return Err(CyberdropError::Api("failed to fetch albums".into()));
     }
 
-    let albums = body.albums.ok_or(CyberdropError::MissingField(
+    body.albums.ok_or(CyberdropError::MissingField(
         "albums response missing albums",
-    ))?;
-
-    let home_domain = match body.home_domain {
-        Some(url) => Some(Url::parse(&url)?),
-        None => None,
-    };
-
-    Ok(AlbumsList {
-        albums,
-        home_domain,
-    })
+    ))
 }
 
 fn parse_album_files(body: AlbumFilesResponse) -> Result<AlbumFilesPage, CyberdropError> {
@@ -347,24 +307,7 @@ fn parse_album_files(body: AlbumFilesResponse) -> Result<AlbumFilesPage, Cyberdr
         "album files response missing count",
     ))?;
 
-    let base_domain = if files.is_empty() {
-        match body.basedomain {
-            Some(url) => Some(Url::parse(&url)?),
-            None => None,
-        }
-    } else {
-        let url = body.basedomain.ok_or(CyberdropError::MissingField(
-            "album files response missing basedomain",
-        ))?;
-        Some(Url::parse(&url)?)
-    };
-
-    Ok(AlbumFilesPage {
-        files,
-        count,
-        albums: body.albums.unwrap_or_default(),
-        base_domain,
-    })
+    Ok(AlbumFilesPage { files, count })
 }
 
 fn parse_create_album(body: CreateAlbumResponse) -> Result<u64, CyberdropError> {

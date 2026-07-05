@@ -12,9 +12,6 @@ use crate::config::{DEFAULT_BASE_URL, DEFAULT_TIMEOUT};
 use crate::token::AuthToken;
 
 /// Async HTTP client for a subset of Cyberdrop endpoints.
-///
-/// Most higher-level methods map non-2xx responses to [`CyberdropError`]. For raw access where
-/// you want to inspect status codes and bodies directly, use [`CyberdropClient::get`].
 #[derive(Debug, Clone)]
 pub struct CyberdropClient {
     pub(crate) client: Client,
@@ -57,21 +54,6 @@ impl CyberdropClient {
     pub fn with_auth_token(mut self, token: impl Into<String>) -> Self {
         self.auth_token = Some(AuthToken::new(token));
         self
-    }
-
-    /// Execute a GET request against a relative path on the configured base URL.
-    ///
-    /// This method returns the raw [`reqwest::Response`] and does **not** convert non-2xx status
-    /// codes into errors. If a token is configured, it will be attached, but authentication is
-    /// not required.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`CyberdropError::Http`] on transport failures (including timeouts). This method
-    /// does not map HTTP status codes to [`CyberdropError`] variants.
-    pub async fn get(&self, path: impl AsRef<str>) -> Result<reqwest::Response, CyberdropError> {
-        let builder = self.apply_auth_if_present(self.client.get(self.join_path(path.as_ref())?));
-        builder.send().await.map_err(CyberdropError::from)
     }
 
     pub(crate) async fn get_json<T>(
@@ -212,13 +194,6 @@ impl CyberdropClient {
             .ok_or(CyberdropError::MissingAuthToken)?;
 
         Ok(Self::attach_token(builder, token))
-    }
-
-    fn apply_auth_if_present(&self, builder: RequestBuilder) -> RequestBuilder {
-        match &self.auth_token {
-            Some(token) => Self::attach_token(builder, token),
-            None => builder,
-        }
     }
 
     fn attach_token(builder: RequestBuilder, token: &AuthToken) -> RequestBuilder {

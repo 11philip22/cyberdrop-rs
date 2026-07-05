@@ -6,11 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use cyberdrop_client::{
-    Album, AlbumFile, AlbumFilesPage, AlbumsList, AuthToken, CyberdropClient,
-    CyberdropClientBuilder, CyberdropError, EditAlbumResult, Permissions, TokenVerification,
-    UploadProgress, UploadedFile,
-};
+use cyberdrop_client::{AuthToken, CyberdropClient, CyberdropClientBuilder, CyberdropError};
 use tokio::sync::OnceCell;
 
 type TestResult<T = ()> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -54,7 +50,7 @@ fn temp_file(name: &str, contents: &[u8]) -> TestResult<PathBuf> {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn auth_builder_and_raw_get_surface() -> TestResult {
+async fn auth_builder_surface() -> TestResult {
     let token = AuthToken::new("secret-token");
     assert_eq!(token.as_str(), "secret-token");
     assert_eq!(token.clone().into_string(), "secret-token");
@@ -74,20 +70,16 @@ async fn auth_builder_and_raw_get_surface() -> TestResult {
 
     let account = live_account().await?;
 
-    let logged_in: AuthToken = CyberdropClient::builder()
+    let logged_in = CyberdropClient::builder()
         .build()?
         .login(&account.username, &account.password)
         .await?;
     assert!(!logged_in.as_str().is_empty());
 
-    let verified: TokenVerification = account.client.verify_token(&account.token).await?;
+    let verified = account.client.verify_token(&account.token).await?;
     assert!(verified.success);
     assert_eq!(verified.username, account.username);
-    let permissions: Permissions = verified.permissions;
-    assert!(permissions.user);
-
-    let response = account.client.get("api/albums").await?;
-    assert!(response.status().is_success());
+    assert!(verified.permissions.user);
 
     let err = CyberdropError::MissingAuthToken;
     assert!(err.to_string().contains("auth token"));
@@ -108,17 +100,17 @@ async fn album_surface() -> TestResult {
         )
         .await?;
 
-    let albums: AlbumsList = account.client.list_albums().await?;
-    assert!(albums.albums.iter().any(|album| album.id == album_id));
+    let albums = account.client.list_albums().await?;
+    assert!(albums.iter().any(|album| album.id == album_id));
 
-    let album: Album = account.client.get_album_by_id(album_id).await?;
+    let album = account.client.get_album_by_id(album_id).await?;
     assert_eq!(album.id, album_id);
 
-    let page: AlbumFilesPage = account.client.list_album_files_page(album_id, 0).await?;
-    let all_files: AlbumFilesPage = account.client.list_album_files(album_id).await?;
+    let page = account.client.list_album_files_page(album_id, 0).await?;
+    let all_files = account.client.list_album_files(album_id).await?;
     assert_eq!(all_files.count, page.count);
 
-    let edited: EditAlbumResult = account
+    let edited = account
         .client
         .edit_album(
             album_id,
@@ -171,7 +163,7 @@ async fn upload_surface() -> TestResult {
         &format!("cyberdrop-client-live-{suffix}-a.txt"),
         b"small live sdk upload\n",
     )?;
-    let uploaded: UploadedFile = account
+    let uploaded = account
         .client
         .upload_file(&first_path, Some(album_id))
         .await?;
@@ -184,23 +176,18 @@ async fn upload_surface() -> TestResult {
         &format!("cyberdrop-client-live-{suffix}-b.txt"),
         b"small live sdk upload with progress\n",
     )?;
-    let uploaded_with_progress: UploadedFile = account
+    let uploaded_with_progress = account
         .client
-        .upload_file_with_progress(
-            &second_path,
-            Some(album_id),
-            move |progress: UploadProgress| {
-                seen_progress.store(progress.bytes_sent, Ordering::SeqCst);
-            },
-        )
+        .upload_file_with_progress(&second_path, Some(album_id), move |progress| {
+            seen_progress.store(progress.bytes_sent, Ordering::SeqCst);
+        })
         .await?;
     assert!(!uploaded_with_progress.url.is_empty());
     assert!(progress_bytes.load(Ordering::SeqCst) > 0);
 
-    let page: AlbumFilesPage = account.client.list_album_files_page(album_id, 0).await?;
+    let page = account.client.list_album_files_page(album_id, 0).await?;
     assert!(page.files.len() >= 2);
-    let file: &AlbumFile = &page.files[0];
-    assert!(!file.name.is_empty());
+    assert!(!page.files[0].name.is_empty());
 
     let _ = std::fs::remove_file(first_path);
     let _ = std::fs::remove_file(second_path);

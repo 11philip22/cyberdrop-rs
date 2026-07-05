@@ -23,7 +23,7 @@
 //! // 3) Use a cloned client that includes the token on authenticated requests.
 //! let authed = client.with_auth_token(token.into_string());
 //! let albums = authed.list_albums().await?;
-//! println!("albums: {}", albums.albums.len());
+//! println!("albums: {}", albums.len());
 //!
 //! // 4) Create an album and upload a file into it.
 //! let album_id = authed
@@ -62,17 +62,9 @@
 //! - `401`/`403` become [`CyberdropError::AuthenticationFailed`]
 //! - other non-2xx statuses become [`CyberdropError::RequestFailed`]
 //!
-//! In contrast, [`CyberdropClient::get`] is low-level and returns the raw response even for
-//! non-2xx statuses.
-//!
 //! External system failures are surfaced as:
 //! - [`CyberdropError::Io`] when reading local files (for example, in [`CyberdropClient::upload_file`])
 //! - [`CyberdropError::Http`] for network/transport failures (DNS, TLS, connection errors, timeouts)
-//!
-//! ## Low-Level Requests
-//!
-//! [`CyberdropClient::get`] is intentionally low-level: it returns the raw [`reqwest::Response`]
-//! and does **not** treat non-2xx status codes as errors.
 
 mod account;
 mod albums;
@@ -84,7 +76,7 @@ mod token;
 mod uploads;
 
 pub use account::{Permissions, TokenVerification};
-pub use albums::{Album, AlbumFilesPage, AlbumsList, EditAlbumResult};
+pub use albums::{Album, AlbumFilesPage, EditAlbumResult};
 pub use client::{CyberdropClient, CyberdropClientBuilder};
 pub use error::CyberdropError;
 pub use files::AlbumFile;
