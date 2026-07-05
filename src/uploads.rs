@@ -156,11 +156,6 @@ async fn prepare_upload_file(file_path: &Path) -> Result<PreparedUpload, Cyberdr
     })
 }
 
-fn finish_chunks_url(mut upload_url: Url) -> Url {
-    upload_url.set_path("/api/upload/finishchunks");
-    upload_url
-}
-
 impl CyberdropClient {
     /// Fetch the upload node URL for the authenticated user.
     ///
@@ -354,7 +349,8 @@ impl CyberdropClient {
                 age: None,
             }],
         };
-        let finish_url = finish_chunks_url(upload_url);
+        let mut finish_url = upload_url;
+        finish_url.set_path("/api/upload/finishchunks");
 
         let response: UploadResponse = self.post_upload_json_url(finish_url, &payload).await?;
 

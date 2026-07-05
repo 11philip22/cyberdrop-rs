@@ -1,6 +1,6 @@
 use reqwest::{
     Client, Method, RequestBuilder, StatusCode, Url,
-    header::{ACCEPT, ACCEPT_LANGUAGE, HeaderName},
+    header::{ACCEPT, ACCEPT_LANGUAGE},
     multipart::Form,
 };
 use serde::de::DeserializeOwned;
@@ -142,7 +142,7 @@ impl CyberdropClient {
         path: &str,
         requires_auth: bool,
     ) -> Result<RequestBuilder, CyberdropError> {
-        let url = self.join_path(path)?;
+        let url = self.base_url.join(path)?;
         self.build_request_url(method, url, requires_auth)
     }
 
@@ -177,21 +177,13 @@ impl CyberdropClient {
         }
     }
 
-    fn join_path(&self, path: &str) -> Result<Url, CyberdropError> {
-        Ok(self.base_url.join(path)?)
-    }
-
     fn apply_auth(&self, builder: RequestBuilder) -> Result<RequestBuilder, CyberdropError> {
         let token = self
             .auth_token
             .as_ref()
             .ok_or(CyberdropError::MissingAuthToken)?;
 
-        Ok(Self::attach_token(builder, token))
-    }
-
-    fn attach_token(builder: RequestBuilder, token: &AuthToken) -> RequestBuilder {
-        builder.header(HeaderName::from_static("token"), token.as_str())
+        Ok(builder.header("token", token.as_str()))
     }
 
     fn upload_headers(&self, builder: RequestBuilder) -> RequestBuilder {

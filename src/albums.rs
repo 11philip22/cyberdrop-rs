@@ -130,7 +130,14 @@ impl CyberdropClient {
         let response: AlbumsResponse = self
             .get_json_with_header("api/albums", true, "Simple", "1")
             .await?;
-        parse_albums(response)
+
+        if !response.success.unwrap_or(false) {
+            return Err(CyberdropError::Api("failed to fetch albums".into()));
+        }
+
+        response.albums.ok_or(CyberdropError::MissingField(
+            "albums response missing albums",
+        ))
     }
 
     /// List all files in an album ("folder") by iterating pages until exhaustion.
@@ -160,7 +167,23 @@ impl CyberdropClient {
         loop {
             let path = format!("api/album/{album_id}/{page}");
             let response: AlbumFilesResponse = self.get_json(&path, true).await?;
-            let mut res = parse_album_files(response)?;
+
+            if !response.success.unwrap_or(false) {
+                let msg = response
+                    .description
+                    .or(response.message)
+                    .unwrap_or_else(|| "failed to fetch album files".to_string());
+                return Err(CyberdropError::Api(msg));
+            }
+
+            let mut res = AlbumFiles {
+                files: response.files.ok_or(CyberdropError::MissingField(
+                    "album files response missing files",
+                ))?,
+                count: response.count.ok_or(CyberdropError::MissingField(
+                    "album files response missing count",
+                ))?,
+            };
 
             if total_count.is_none() {
                 total_count = Some(res.count);
@@ -211,7 +234,23 @@ impl CyberdropClient {
         };
 
         let response: CreateAlbumResponse = self.post_json("api/albums", &payload, true).await?;
-        parse_create_album(response)
+
+        if response.success.unwrap_or(false) {
+            return response.id.ok_or(CyberdropError::MissingField(
+                "create album response missing id",
+            ));
+        }
+
+        let msg = response
+            .description
+            .or(response.message)
+            .unwrap_or_else(|| "create album failed".to_string());
+
+        if msg.to_lowercase().contains("already an album") {
+            Err(CyberdropError::AlbumAlreadyExists(msg))
+        } else {
+            Err(CyberdropError::Api(msg))
+        }
     }
 
     /// Edit an existing album ("folder").
@@ -253,76 +292,23 @@ impl CyberdropClient {
 
         let response: EditAlbumResponse = self.post_json("api/albums/edit", &payload, true).await?;
 
-        parse_edit_album(response)
+        if !response.success.unwrap_or(false) {
+            let msg = response
+                .description
+                .or(response.message)
+                .unwrap_or_else(|| "edit album failed".to_string());
+            return Err(CyberdropError::Api(msg));
+        }
+
+        if response.name.is_none() && response.identifier.is_none() {
+            return Err(CyberdropError::MissingField(
+                "edit album response missing name/identifier",
+            ));
+        }
+
+        Ok(EditAlbumResult {
+            name: response.name,
+            identifier: response.identifier,
+        })
     }
-}
-
-fn parse_albums(body: AlbumsResponse) -> Result<Vec<Album>, CyberdropError> {
-    if !body.success.unwrap_or(false) {
-        return Err(CyberdropError::Api("failed to fetch albums".into()));
-    }
-
-    body.albums.ok_or(CyberdropError::MissingField(
-        "albums response missing albums",
-    ))
-}
-
-fn parse_album_files(body: AlbumFilesResponse) -> Result<AlbumFiles, CyberdropError> {
-    if !body.success.unwrap_or(false) {
-        let msg = body
-            .description
-            .or(body.message)
-            .unwrap_or_else(|| "failed to fetch album files".to_string());
-        return Err(CyberdropError::Api(msg));
-    }
-
-    let files = body.files.ok_or(CyberdropError::MissingField(
-        "album files response missing files",
-    ))?;
-
-    let count = body.count.ok_or(CyberdropError::MissingField(
-        "album files response missing count",
-    ))?;
-
-    Ok(AlbumFiles { files, count })
-}
-
-fn parse_create_album(body: CreateAlbumResponse) -> Result<u64, CyberdropError> {
-    if body.success.unwrap_or(false) {
-        return body.id.ok_or(CyberdropError::MissingField(
-            "create album response missing id",
-        ));
-    }
-
-    let msg = body
-        .description
-        .or(body.message)
-        .unwrap_or_else(|| "create album failed".to_string());
-
-    if msg.to_lowercase().contains("already an album") {
-        Err(CyberdropError::AlbumAlreadyExists(msg))
-    } else {
-        Err(CyberdropError::Api(msg))
-    }
-}
-
-fn parse_edit_album(body: EditAlbumResponse) -> Result<EditAlbumResult, CyberdropError> {
-    if !body.success.unwrap_or(false) {
-        let msg = body
-            .description
-            .or(body.message)
-            .unwrap_or_else(|| "edit album failed".to_string());
-        return Err(CyberdropError::Api(msg));
-    }
-
-    if body.name.is_none() && body.identifier.is_none() {
-        return Err(CyberdropError::MissingField(
-            "edit album response missing name/identifier",
-        ));
-    }
-
-    Ok(EditAlbumResult {
-        name: body.name,
-        identifier: body.identifier,
-    })
 }

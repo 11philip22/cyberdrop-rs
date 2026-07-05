@@ -114,7 +114,17 @@ impl CyberdropClient {
         };
 
         let response: RegisterResponse = self.post_json("api/register", &payload, false).await?;
-        parse_register_response(response)
+
+        if response.success.unwrap_or(false) {
+            return response.token.ok_or(CyberdropError::MissingToken);
+        }
+
+        let msg = response
+            .description
+            .or(response.message)
+            .unwrap_or_else(|| "registration failed".to_string());
+
+        Err(CyberdropError::Api(msg))
     }
 
     /// Verify a token and fetch associated permissions.
@@ -138,39 +148,20 @@ impl CyberdropClient {
         let response: VerifyTokenResponse =
             self.post_json("api/tokens/verify", &payload, false).await?;
 
-        parse_token_verification(response)
+        let success = response.success.ok_or(CyberdropError::MissingField(
+            "verification response missing success",
+        ))?;
+        let username = response.username.ok_or(CyberdropError::MissingField(
+            "verification response missing username",
+        ))?;
+        let permissions = response.permissions.ok_or(CyberdropError::MissingField(
+            "verification response missing permissions",
+        ))?;
+
+        Ok(TokenVerification {
+            success,
+            username,
+            permissions,
+        })
     }
-}
-
-fn parse_register_response(body: RegisterResponse) -> Result<AuthToken, CyberdropError> {
-    if body.success.unwrap_or(false) {
-        return body.token.ok_or(CyberdropError::MissingToken);
-    }
-
-    let msg = body
-        .description
-        .or(body.message)
-        .unwrap_or_else(|| "registration failed".to_string());
-
-    Err(CyberdropError::Api(msg))
-}
-
-fn parse_token_verification(
-    body: VerifyTokenResponse,
-) -> Result<TokenVerification, CyberdropError> {
-    let success = body.success.ok_or(CyberdropError::MissingField(
-        "verification response missing success",
-    ))?;
-    let username = body.username.ok_or(CyberdropError::MissingField(
-        "verification response missing username",
-    ))?;
-    let permissions = body.permissions.ok_or(CyberdropError::MissingField(
-        "verification response missing permissions",
-    ))?;
-
-    Ok(TokenVerification {
-        success,
-        username,
-        permissions,
-    })
 }
